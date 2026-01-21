@@ -1,0 +1,56 @@
+
+export const generateId = (prefix: string = ''): string => {
+  return `${prefix}${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+};
+
+export const formatDateTime = (timestamp: number | null): string => {
+  if (!timestamp || isNaN(Number(timestamp))) return '进行中';
+  const date = new Date(timestamp);
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+};
+
+export const formatDate = (timestamp: number): string => {
+  if (isNaN(Number(timestamp))) return new Date().toISOString().split('T')[0];
+  const date = new Date(timestamp);
+  return date.toISOString().split('T')[0];
+};
+
+export const calculateDuration = (start: number, end: number | null): number => {
+  const endTime = Number(end);
+  const startTime = Number(start);
+  if (!end || isNaN(endTime) || isNaN(startTime)) return 0;
+  return Math.max(1, Math.round((endTime - startTime) / 60000));
+};
+
+export const downloadJson = (data: any, fileName: string) => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+export const downloadCsv = (headers: string[], rows: string[][], fileName: string) => {
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','))
+  ].join('\n');
+  
+  // Add BOM for UTF-8 Excel support
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+};
