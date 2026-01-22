@@ -261,12 +261,12 @@ const AdminOverlay: React.FC<{
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        <div className="border-b border-gray-100 flex justify-between items-center px-6 py-4 bg-gray-50">
+        <div className="border-b border-gray-100 flex justify-between items-center px-6 py-4 bg-gray-50 shrink-0">
           <h2 className="text-xl font-bold text-gray-800">管理后台</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
         </div>
         <div className="flex flex-1 overflow-hidden">
-          <div className="w-48 border-r border-gray-100 bg-gray-50 flex flex-col p-4 gap-2">
+          <div className="w-48 border-r border-gray-100 bg-gray-50 flex flex-col p-4 gap-2 shrink-0">
             {[
               { id: 'cases', label: '案件管理' },
               { id: 'records', label: '记录管理' },
@@ -278,7 +278,7 @@ const AdminOverlay: React.FC<{
               </button>
             ))}
           </div>
-          <div className="flex-1 overflow-auto p-6 bg-white">
+          <div className="flex-1 p-6 bg-white overflow-hidden">
             {tab === 'cases' && <CaseManagement cases={cases} setCases={setCases} showConfirm={showConfirm} />}
             {tab === 'records' && <RecordManagement cases={cases} entries={entries} setEntries={setEntries} showConfirm={showConfirm} />}
             {tab === 'reports' && <ReportGeneration cases={cases} entries={entries} />}
@@ -323,8 +323,8 @@ const CaseManagement: React.FC<{
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex justify-between items-center mb-6 shrink-0">
         <h3 className="text-lg font-bold text-gray-800">所有案件</h3>
         <button 
           onClick={() => {
@@ -336,9 +336,9 @@ const CaseManagement: React.FC<{
           <Icons.Plus /> 创建案件
         </button>
       </div>
-      <div className="grid gap-4">
+      <div className="grid gap-4 overflow-y-auto pr-2 pb-4">
         {cases.map(c => (
-          <div key={c.id} className="border border-gray-200 rounded-xl p-4 flex justify-between items-start bg-white hover:border-indigo-200 transition-colors">
+          <div key={c.id} className="border border-gray-200 rounded-xl p-4 flex justify-between items-start bg-white hover:border-indigo-200 transition-colors shrink-0">
             <div>
               <div className="flex items-center gap-3 mb-1">
                 <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">{c.code}</span>
@@ -409,11 +409,9 @@ const RecordManagement: React.FC<{
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [batchSelection, setBatchSelection] = useState<string[]>([]);
   
-  // 排序状态：默认开始时间倒序
   const [sortField, setSortField] = useState<SortField>('time');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
-  // 处理排序点击
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -423,10 +421,8 @@ const RecordManagement: React.FC<{
     }
   };
 
-  // 排序筛选后的记录
   const sortedEntries = useMemo(() => {
     let result = entries.filter(e => !selectedCaseId || e.caseId === selectedCaseId);
-    
     result.sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -447,11 +443,9 @@ const RecordManagement: React.FC<{
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-    
     return result;
   }, [entries, selectedCaseId, sortField, sortOrder, cases]);
 
-  // 可勾选的记录（即已经结束的记录）
   const selectableEntries = sortedEntries.filter(e => e.endTime !== null);
 
   const toggleSelection = (id: string) => {
@@ -463,7 +457,6 @@ const RecordManagement: React.FC<{
   const deleteSelected = () => {
     const count = batchSelection.length;
     if (count === 0) return;
-    
     showConfirm({
       title: "删除时间记录",
       message: `确定要删除选中的 ${count} 条时间记录吗？该操作不可撤销。`,
@@ -483,14 +476,16 @@ const RecordManagement: React.FC<{
     }
     const targetCaseId = selectedCaseId || cases[0].id;
     const now = Date.now();
+    const startTime = now;
+    const endTime = now + 1800000;
     const newEntry: TimeEntry = {
       id: generateId('REC-'),
       caseId: targetCaseId,
-      workType: WorkType.Other,
+      workType: WorkType.Meeting,
       notes: '',
-      startTime: now - 3600000, // 默认一小时前
-      endTime: now, // 手动添加时结束时间为必填，默认为当前
-      duration: 60
+      startTime: startTime,
+      endTime: endTime,
+      duration: 30
     };
     setEntries(prev => [newEntry, ...prev]);
     setEditingEntry(newEntry);
@@ -498,14 +493,10 @@ const RecordManagement: React.FC<{
 
   const handleSaveEdit = () => {
     if (!editingEntry) return;
-
-    // 基础有效性验证
     if (isNaN(editingEntry.startTime)) {
         window.alert("开始时间无效");
         return;
     }
-
-    // 验证逻辑
     if (editingEntry.endTime !== null) {
       if (isNaN(editingEntry.endTime)) {
           window.alert("结束时间无效");
@@ -515,15 +506,7 @@ const RecordManagement: React.FC<{
         window.alert("结束时间必须晚于开始时间");
         return;
       }
-    } else {
-        // 如果原本不是 null，不允许改为 null
-        const original = entries.find(e => e.id === editingEntry.id);
-        if (original && original.endTime !== null) {
-            window.alert("已完成的记录必须包含结束时间");
-            return;
-        }
     }
-
     setEntries(prev => prev.map(item => item.id === editingEntry.id ? editingEntry : item));
     setEditingEntry(null);
   };
@@ -533,24 +516,25 @@ const RecordManagement: React.FC<{
     return <span className="ml-1 text-indigo-600">{sortOrder === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  // 辅助函数：安全地将时间戳转换为 HTML input 需要的格式
   const safeTimestampToISO = (ts: number | null): string => {
     if (ts === null || isNaN(ts)) return '';
     try {
-        return new Date(ts).toISOString().slice(0, 16);
+        const d = new Date(ts);
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     } catch (e) {
         return '';
     }
   };
 
   return (
-    <div>
-      <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-6 shrink-0">
         <div className="flex items-center gap-3">
           <select 
             value={selectedCaseId} 
             onChange={(e) => setSelectedCaseId(e.target.value)} 
-            className="border border-gray-300 rounded px-4 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-200"
+            className="border border-gray-300 rounded px-4 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-200 text-sm"
           >
             <option value="">所有案件记录</option>
             {cases.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -558,7 +542,7 @@ const RecordManagement: React.FC<{
           <button 
             type="button"
             onClick={handleAddManual}
-            className="flex items-center gap-1 text-indigo-600 border border-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors font-bold text-sm"
+            className="flex items-center gap-1 text-indigo-600 border border-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors font-bold text-xs"
           >
             <Icons.Plus /> 手动添加
           </button>
@@ -567,37 +551,37 @@ const RecordManagement: React.FC<{
           <button 
             type="button"
             onClick={deleteSelected} 
-            className="bg-red-50 text-red-600 border border-red-500 px-4 py-2 rounded-lg hover:bg-red-100 flex items-center gap-2 transition-all font-black shadow-sm"
+            className="bg-red-50 text-red-600 border border-red-500 px-4 py-1.5 rounded-lg hover:bg-red-100 flex items-center gap-2 transition-all font-black shadow-sm text-xs"
           >
             <Icons.Trash /> 删除选中 ({batchSelection.length})
           </button>
         )}
       </div>
-      <div className="overflow-x-auto border border-gray-100 rounded-xl shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold">
+      <div className="flex-grow border border-gray-100 rounded-xl shadow-sm bg-white overflow-y-auto min-h-0">
+        <table className="w-full text-left text-sm table-fixed">
+          <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 w-10">
                 <input 
                   type="checkbox" 
                   onChange={(e) => setBatchSelection(e.target.checked ? selectableEntries.map(e => e.id) : [])} 
                   checked={selectableEntries.length > 0 && batchSelection.length === selectableEntries.length}
-                  title="全选（仅限已结束的记录）"
                 />
               </th>
-              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none" onClick={() => handleSort('case')}>
+              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none w-[20%]" onClick={() => handleSort('case')}>
                 案件 <SortIndicator field="case" />
               </th>
-              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none" onClick={() => handleSort('type')}>
+              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none w-[80px]" onClick={() => handleSort('type')}>
                 类型 <SortIndicator field="type" />
               </th>
-              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none" onClick={() => handleSort('time')}>
+              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none w-[130px]" onClick={() => handleSort('time')}>
                 起止时间 <SortIndicator field="time" />
               </th>
-              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none" onClick={() => handleSort('duration')}>
+              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none w-[70px]" onClick={() => handleSort('duration')}>
                 时长 <SortIndicator field="duration" />
               </th>
-              <th className="px-4 py-3 text-right">操作</th>
+              <th className="px-4 py-3 text-right w-[60px]">操作</th>
+              <th className="px-4 py-3">注释</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -613,39 +597,38 @@ const RecordManagement: React.FC<{
                       checked={batchSelection.includes(e.id)} 
                       onChange={() => toggleSelection(e.id)} 
                       className={isActive ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
-                      title={isActive ? '正在进行中的记录不能删除' : '勾选进行批量删除'}
                     />
                   </td>
-                  <td className="px-4 py-3 font-medium">{c?.name || '未知'}</td>
+                  <td className="px-4 py-3 font-medium truncate" title={c?.name}>{c?.name || '未知'}</td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${isActive ? 'bg-green-100 text-green-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold block truncate text-center ${isActive ? 'bg-green-100 text-green-700' : 'bg-indigo-50 text-indigo-700'}`}>
                       {e.workType}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs leading-relaxed text-gray-500">
-                    起: {formatDateTime(e.startTime)}<br/>
-                    止: {formatDateTime(e.endTime)}
+                  <td className="px-4 py-3 text-[10px] leading-tight text-gray-500 font-mono">
+                    {formatDateTime(e.startTime)}<br/>
+                    {formatDateTime(e.endTime)}
                   </td>
-                  <td className="px-4 py-3 font-mono text-indigo-600 font-bold">
+                  <td className="px-4 py-3 font-mono text-indigo-600 font-bold text-xs">
                     {isActive ? <span className="animate-pulse">计时中...</span> : `${e.duration}m`}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => setEditingEntry(e)} className="text-indigo-600 hover:text-indigo-800 font-medium">编辑</button>
+                    <button onClick={() => setEditingEntry(e)} className="text-indigo-600 hover:text-indigo-800 font-medium text-xs">编辑</button>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 italic truncate" title={e.notes || '无注释'}>
+                    {e.notes || '-'}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        {sortedEntries.length === 0 && <p className="text-center py-20 text-gray-400">没有找到相关计时记录</p>}
+        {sortedEntries.length === 0 && <p className="text-center py-20 text-gray-400 bg-white">没有找到相关计时记录</p>}
       </div>
       {editingEntry && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="text-lg font-bold">编辑计时记录</h4>
-              <p className="text-[10px] font-mono text-gray-400">{editingEntry.id}</p>
-            </div>
+            <h4 className="text-lg font-bold mb-4">编辑计时记录</h4>
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">所属案件</label>
@@ -670,45 +653,25 @@ const RecordManagement: React.FC<{
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">开始时间</label>
-                  <input 
-                    type="datetime-local" 
-                    value={safeTimestampToISO(editingEntry.startTime)} 
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (!val) return; // 忽略清除操作，强制保留旧值
-                      const newStart = new Date(val).getTime();
-                      if (isNaN(newStart)) return;
+                  <input type="datetime-local" value={safeTimestampToISO(editingEntry.startTime)} onChange={(e) => {
+                      const val = e.target.value; if (!val) return;
+                      const newStart = new Date(val).getTime(); if (isNaN(newStart)) return;
                       setEditingEntry({...editingEntry, startTime: newStart, duration: calculateDuration(newStart, editingEntry.endTime)});
-                    }} 
-                    className="w-full border border-gray-300 rounded p-2 outline-none text-sm" 
-                  />
+                  }} className="w-full border border-gray-300 rounded p-2 outline-none text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">结束时间</label>
-                  <input 
-                    type="datetime-local" 
-                    disabled={editingEntry.endTime === null} 
-                    value={safeTimestampToISO(editingEntry.endTime)} 
-                    onChange={(e) => {
-                        const val = e.target.value;
-                        if (!val) return; // 忽略清除操作
-                        const newEnd = new Date(val).getTime();
-                        if (isNaN(newEnd)) return;
+                  <input type="datetime-local" disabled={editingEntry.endTime === null} value={safeTimestampToISO(editingEntry.endTime)} onChange={(e) => {
+                        const val = e.target.value; if (!val) return;
+                        const newEnd = new Date(val).getTime(); if (isNaN(newEnd)) return;
                         setEditingEntry({...editingEntry, endTime: newEnd, duration: calculateDuration(editingEntry.startTime, newEnd)});
-                    }} 
-                    className="w-full border border-gray-300 rounded p-2 outline-none text-sm disabled:bg-gray-50" 
-                  />
+                  }} className="w-full border border-gray-300 rounded p-2 outline-none text-sm disabled:bg-gray-50" />
                 </div>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-8">
               <button onClick={() => setEditingEntry(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">取消</button>
-              <button 
-                onClick={handleSaveEdit} 
-                className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow font-bold"
-              >
-                保存修改
-              </button>
+              <button onClick={handleSaveEdit} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow font-bold">保存修改</button>
             </div>
           </div>
         </div>
@@ -721,29 +684,68 @@ const ReportGeneration: React.FC<{
   cases: Case[];
   entries: TimeEntry[];
 }> = ({ cases, entries }) => {
-  const [startDate, setStartDate] = useState<string>(formatDate(Date.now() - 604800000));
-  const [endDate, setEndDate] = useState<string>(formatDate(Date.now()));
+  const defaultDates = useMemo(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+        start: formatDate(firstDay.getTime()),
+        end: formatDate(lastDay.getTime())
+    };
+  }, []);
+
+  const [startDate, setStartDate] = useState<string>(defaultDates.start);
+  const [endDate, setEndDate] = useState<string>(defaultDates.end);
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
 
-  const filtered = useMemo(() => {
+  const entriesInRange = useMemo(() => {
     const start = new Date(startDate).getTime();
     const end = new Date(endDate).getTime() + 86400000;
-    return entries.filter(e => {
-      const matchDate = e.startTime >= start && e.startTime <= end;
-      const matchCase = selectedCaseIds.length === 0 || selectedCaseIds.includes(e.caseId);
-      return matchDate && matchCase;
-    });
-  }, [entries, startDate, endDate, selectedCaseIds]);
+    return entries.filter(e => e.startTime >= start && e.startTime <= end);
+  }, [entries, startDate, endDate]);
+
+  const availableCases = useMemo(() => {
+    const caseIdsWithRecords = new Set(entriesInRange.map(e => e.caseId));
+    return cases.filter(c => caseIdsWithRecords.has(c.id));
+  }, [cases, entriesInRange]);
+
+  useEffect(() => {
+    const availableIds = new Set(availableCases.map(c => c.id));
+    setSelectedCaseIds(prev => prev.filter(id => availableIds.has(id)));
+  }, [availableCases]);
+
+  const filtered = useMemo(() => {
+    const data = selectedCaseIds.length === 0 
+      ? entriesInRange 
+      : entriesInRange.filter(e => selectedCaseIds.includes(e.caseId));
+    return [...data].sort((a, b) => b.startTime - a.startTime);
+  }, [entriesInRange, selectedCaseIds]);
 
   const stats = useMemo(() => {
     const map = new Map<string, number>();
     filtered.forEach(e => { map.set(e.caseId, (map.get(e.caseId) || 0) + e.duration); });
-    return Array.from(map.entries()).map(([id, total]) => ({ case: cases.find(c => c.id === id)?.name || '未知', total }));
+    return Array.from(map.entries())
+      .map(([id, total]) => ({ caseId: id, case: cases.find(c => c.id === id)?.name || '未知', total }))
+      .sort((a, b) => a.case.localeCompare(b.case)); 
   }, [filtered, cases]);
 
+  const handleExportCsv = () => {
+    const headers = ['案件', '工作类型', '注释', '开始', '结束', '时长'];
+    const rows = filtered.map(e => [
+      cases.find(c => c.id === e.caseId)?.name || '未知',
+      e.workType, e.notes,
+      formatDateTime(e.startTime), formatDateTime(e.endTime), e.duration.toString()
+    ]);
+    rows.push(['', '', '', '', '', '']);
+    stats.forEach(s => {
+      rows.push([s.case, '总计', '', '', '', s.total.toString()]);
+    });
+    downloadCsv(headers, rows, `Report_${startDate}_${endDate}.csv`);
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 flex flex-col gap-6">
+    <div className="space-y-6 flex flex-col h-full overflow-hidden">
+      <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 flex flex-col gap-6 shrink-0">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-gray-500 mb-2">开始日期</label>
@@ -755,97 +757,89 @@ const ReportGeneration: React.FC<{
           </div>
         </div>
         <div className="border-t border-gray-200 pt-4">
-          <label className="block text-xs font-bold text-gray-500 mb-2">按案件筛选 (多选)</label>
+          <label className="block text-xs font-bold text-gray-500 mb-2">按案件筛选</label>
           <div className="flex flex-wrap gap-2">
-            {cases.map(c => (
-              <button 
-                key={c.id} 
-                onClick={() => setSelectedCaseIds(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])} 
-                className={`text-xs px-3 py-1.5 rounded-full border transition-all ${selectedCaseIds.includes(c.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
-              >
-                {c.name}
-              </button>
-            ))}
+            {availableCases.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2 italic">该时间段内暂无案件记录</p>
+            ) : (
+                availableCases.map(c => (
+                    <button key={c.id} onClick={() => setSelectedCaseIds(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])} className={`text-xs px-3 py-1.5 rounded-full border transition-all ${selectedCaseIds.includes(c.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
+                      {c.name}
+                    </button>
+                  ))
+            )}
           </div>
         </div>
       </div>
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center shrink-0">
         <h3 className="text-lg font-bold text-gray-800">报表明细</h3>
-        <button 
-          onClick={() => downloadCsv(['案件', '工作类型', '注释', '开始', '结束', '时长'], filtered.map(e => [cases.find(c => c.id === e.caseId)?.name || '未知', e.workType, e.notes, formatDateTime(e.startTime), formatDateTime(e.endTime), e.duration.toString()]), `Report_${startDate}.csv`)}
-          className="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 transition-colors shadow flex items-center gap-2 text-sm font-bold"
-        >
+        <button onClick={handleExportCsv} className="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 transition-colors shadow flex items-center gap-2 text-sm font-bold disabled:opacity-50" disabled={filtered.length === 0}>
           导出 CSV
         </button>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {stats.map(s => (
-          <div key={s.case} className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-            <p className="text-[10px] text-indigo-400 font-bold uppercase truncate">{s.case}</p>
-            <p className="text-xl font-black text-indigo-700">{s.total}m</p>
+      {stats.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
+            {stats.map(s => (
+              <div key={s.caseId} className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                <p className="text-[10px] text-indigo-400 font-bold uppercase truncate" title={s.case}>{s.case}</p>
+                <p className="text-xl font-black text-indigo-700">{s.total}m</p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[10px]">
+      )}
+      <div className="border border-gray-100 rounded-xl shadow-sm bg-white flex flex-col flex-grow min-h-0 overflow-y-auto">
+        <table className="w-full text-left text-xs table-fixed">
+          <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[10px] sticky top-0 z-10">
             <tr>
-              <th className="px-4 py-3">案件</th>
-              <th className="px-4 py-3">类型</th>
-              <th className="px-4 py-3">时间</th>
-              <th className="px-4 py-3 text-right">时长</th>
+              <th className="px-4 py-3 w-[25%]">案件</th>
+              <th className="px-4 py-3 w-[80px] text-center">类型</th>
+              <th className="px-4 py-3 w-[130px]">起止时间</th>
+              <th className="px-4 py-3 w-[70px] text-right">时长</th>
+              <th className="px-4 py-3">注释</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 bg-white">
             {filtered.map(e => (
               <tr key={e.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3 font-semibold text-gray-700">{cases.find(c => c.id === e.caseId)?.name || '未知'}</td>
-                <td className="px-4 py-3">{e.workType}</td>
-                <td className="px-4 py-3 text-gray-500">{formatDateTime(e.startTime)} - {formatDateTime(e.endTime)}</td>
+                <td className="px-4 py-3 font-semibold text-gray-700 truncate" title={cases.find(c => c.id === e.caseId)?.name}>{cases.find(c => c.id === e.caseId)?.name || '未知'}</td>
+                <td className="px-4 py-3 text-center">
+                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[9px] uppercase font-bold">{e.workType}</span>
+                </td>
+                <td className="px-4 py-3 text-gray-500 font-mono text-[10px] leading-tight">
+                  {formatDateTime(e.startTime)}<br/>
+                  {formatDateTime(e.endTime)}
+                </td>
                 <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">{e.duration}m</td>
+                <td className="px-4 py-3 text-gray-500 italic truncate" title={e.notes || '无注释'}>{e.notes || '-'}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        {filtered.length === 0 && <p className="text-center py-20 text-gray-400 bg-white">该时间段内暂无满足条件的记录</p>}
       </div>
     </div>
   );
 };
 
 const SystemManagement: React.FC<{
-  cases: Case[];
-  entries: TimeEntry[];
+  cases: Case[]; entries: TimeEntry[];
   setCases: React.Dispatch<React.SetStateAction<Case[]>>;
   setEntries: React.Dispatch<React.SetStateAction<TimeEntry[]>>;
   showConfirm: (config: any) => void;
 }> = ({ cases, entries, setCases, setEntries, showConfirm }) => {
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]; if (!file) return;
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
       if (parsed && Array.isArray(parsed.cases) && Array.isArray(parsed.entries)) {
         showConfirm({
-          title: "恢复备份数据",
-          message: "这将会清除当前所有数据并覆盖为备份文件内容。确定要继续吗？",
-          isDestructive: true,
-          confirmText: "确认恢复",
-          onConfirm: () => {
-            setCases(parsed.cases);
-            setEntries(parsed.entries);
-          }
+          title: "恢复备份数据", message: "这将会清除当前所有数据并覆盖为备份文件内容。确定要继续吗？",
+          isDestructive: true, confirmText: "确认恢复", onConfirm: () => { setCases(parsed.cases); setEntries(parsed.entries); }
         });
-      } else {
-        window.alert("非法的备份文件格式。");
-      }
-    } catch (err) {
-      window.alert("读取文件失败");
-    } finally {
-      e.target.value = '';
-    }
+      } else { window.alert("非法的备份文件格式。"); }
+    } catch (err) { window.alert("读取文件失败"); } finally { e.target.value = ''; }
   };
-
   return (
     <div className="max-w-xl mx-auto py-10 text-center">
       <div className="bg-indigo-50 p-8 rounded-2xl border border-indigo-100 mb-8">
@@ -854,10 +848,7 @@ const SystemManagement: React.FC<{
       </div>
       <div className="border-2 border-dashed border-gray-200 rounded-2xl p-10 hover:border-indigo-300 transition-colors">
         <h4 className="font-bold text-gray-700 mb-4">恢复备份</h4>
-        <label className="bg-white border border-gray-300 px-6 py-2.5 rounded-lg cursor-pointer hover:bg-gray-50 font-medium shadow-sm transition-colors inline-block">
-          选择文件并导入
-          <input type="file" accept=".json" onChange={handleRestore} className="hidden" />
-        </label>
+        <label className="bg-white border border-gray-300 px-6 py-2.5 rounded-lg cursor-pointer hover:bg-gray-50 font-medium shadow-sm transition-colors inline-block">选择文件并导入<input type="file" accept=".json" onChange={handleRestore} className="hidden" /></label>
       </div>
     </div>
   );
