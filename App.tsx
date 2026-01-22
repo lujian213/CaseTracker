@@ -9,6 +9,9 @@ const DEFAULT_WORK_TYPES = Object.values(WorkType);
 
 type AdminTab = 'cases' | 'worktypes' | 'records' | 'reports' | 'system';
 
+type SortField = 'case' | 'type' | 'time' | 'duration';
+type SortOrder = 'asc' | 'desc';
+
 // --- 可编辑下拉选择组件 ---
 const EditableSelect: React.FC<{
   value: string;
@@ -172,13 +175,14 @@ const App: React.FC = () => {
     }));
   }, []);
 
-  const startTimer = useCallback((caseId: string, workType: string, notes: string) => {
+  const startTimer = useCallback((caseId: string, workType: string, attorney: string, notes: string) => {
     const now = Date.now();
     stopAllTimers(now);
     const newEntry: TimeEntry = {
       id: generateId('REC-'),
       caseId,
       workType,
+      attorney,
       notes,
       startTime: now,
       endTime: null,
@@ -240,13 +244,13 @@ const Dashboard: React.FC<{
   cases: Case[];
   entries: TimeEntry[];
   workTypes: string[];
-  onStart: (id: string, type: string, notes: string) => void;
+  onStart: (id: string, type: string, attorney: string, notes: string) => void;
   onStop: () => void;
 }> = ({ cases, entries, workTypes, onStart, onStop }) => {
   const activeEntry = entries.find(e => e.endTime === null);
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-md border border-gray-100 min-h-[320px]">
         <div className="p-1">
           {cases.length === 0 ? (
             <div className="py-20 text-center text-gray-400">
@@ -284,14 +288,14 @@ const Dashboard: React.FC<{
 const CaseRow: React.FC<{
   caseItem: Case;
   workTypes: string[];
-  onStart: (id: string, type: string, notes: string) => void;
+  onStart: (id: string, type: string, attorney: string, notes: string) => void;
   onStop: () => void;
   isActive: boolean;
 }> = ({ caseItem, workTypes, onStart, onStop, isActive }) => {
   const [workType, setWorkType] = useState<string>(workTypes[0] || '会议');
+  const [attorney, setAttorney] = useState('');
   const [notes, setNotes] = useState('');
   
-  // Ensure we sync the local workType state if workTypes change and the current one is gone
   useEffect(() => {
     if (!workTypes.includes(workType) && workTypes.length > 0) {
       setWorkType(workTypes[0]);
@@ -301,9 +305,18 @@ const CaseRow: React.FC<{
   }, [workTypes, workType]);
 
   return (
-    <div className={`p-4 transition-colors flex flex-col md:flex-row md:items-center gap-4 ${isActive ? 'bg-indigo-50 border-l-4 border-indigo-500' : 'hover:bg-gray-50'}`}>
-      <div className="flex-grow">
-        <h3 className="font-semibold text-gray-800">{caseItem.name}</h3>
+    <div className={`p-4 transition-colors flex flex-col md:flex-row md:items-center gap-4 first:rounded-t-xl last:rounded-b-xl ${isActive ? 'bg-indigo-50 border-l-4 border-indigo-500' : 'hover:bg-gray-50'}`}>
+      <div className="flex-grow group relative">
+        <h3 className="font-semibold text-gray-800 cursor-help flex items-center gap-2">
+          {caseItem.name}
+          <Icons.ChevronRight className="opacity-0 group-hover:opacity-30 transition-opacity w-3 h-3" />
+        </h3>
+        {/* Tooltip 浮窗 - 改进 */}
+        <div className="absolute z-[150] bottom-full left-0 mb-3 invisible group-hover:visible w-72 p-3 bg-gray-900/95 backdrop-blur text-white text-xs rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none translate-y-1 group-hover:translate-y-0">
+          <p className="font-bold border-b border-white/10 pb-2 mb-2 text-indigo-300">案件描述</p>
+          <p className="leading-relaxed whitespace-pre-wrap">{caseItem.description || caseItem.name}</p>
+          <div className="absolute top-full left-4 border-[6px] border-transparent border-t-gray-900/95"></div>
+        </div>
         <p className="text-xs text-gray-500 font-mono">{caseItem.code}</p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -316,17 +329,24 @@ const CaseRow: React.FC<{
         />
         <input 
           type="text" 
+          placeholder="经办律师"
+          value={attorney}
+          onChange={(e) => setAttorney(e.target.value)}
+          className="border border-gray-300 rounded px-2 py-1 text-sm md:w-28 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
+        />
+        <input 
+          type="text" 
           placeholder="注释 (可选)"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="border border-gray-300 rounded px-3 py-1 text-sm flex-grow md:w-48 focus:ring-2 focus:ring-indigo-200 outline-none"
+          className="border border-gray-300 rounded px-3 py-1 text-sm flex-grow md:w-40 focus:ring-2 focus:ring-indigo-200 outline-none"
         />
         {isActive ? (
           <button onClick={onStop} className="flex items-center gap-1 bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded text-sm font-bold shadow transition-colors">
             <Icons.Stop /> 停止计时
           </button>
         ) : (
-          <button onClick={() => onStart(caseItem.id, workType, notes)} className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-sm font-bold shadow transition-colors">
+          <button onClick={() => onStart(caseItem.id, workType, attorney, notes)} className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-sm font-bold shadow transition-colors">
             <Icons.Play /> 开始计时
           </button>
         )}
@@ -369,7 +389,7 @@ const AdminOverlay: React.FC<{
             ))}
           </div>
           <div className="flex-1 p-6 bg-white overflow-hidden">
-            {tab === 'cases' && <CaseManagement cases={cases} setCases={setCases} showConfirm={showConfirm} />}
+            {tab === 'cases' && <CaseManagement cases={cases} setCases={setCases} setEntries={setEntries} showConfirm={showConfirm} />}
             {tab === 'worktypes' && <WorkTypeManagement workTypes={workTypes} setWorkTypes={setWorkTypes} showConfirm={showConfirm} />}
             {tab === 'records' && <RecordManagement cases={cases} entries={entries} workTypes={workTypes} setEntries={setEntries} showConfirm={showConfirm} />}
             {tab === 'reports' && <ReportGeneration cases={cases} entries={entries} />}
@@ -381,7 +401,115 @@ const AdminOverlay: React.FC<{
   );
 };
 
-// --- 工作类型管理组件 ---
+const CaseManagement: React.FC<{
+  cases: Case[];
+  setCases: React.Dispatch<React.SetStateAction<Case[]>>;
+  setEntries: React.Dispatch<React.SetStateAction<TimeEntry[]>>;
+  showConfirm: (config: any) => void;
+}> = ({ cases, setCases, setEntries, showConfirm }) => {
+  const [editingCase, setEditingCase] = useState<Case | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+
+  const handleDelete = (id: string) => {
+    showConfirm({
+      title: "删除案件",
+      message: "确定要删除此案件吗？相关的计时记录也将被永久删除。",
+      isDestructive: true,
+      confirmText: "确认删除",
+      onConfirm: () => {
+        setCases(prev => prev.filter(c => c.id !== id));
+        // 联动删除相关记录
+        setEntries(prev => prev.filter(e => e.caseId !== id));
+      }
+    });
+  };
+
+  const saveCase = (c: Case) => {
+    setCases(prev => {
+      if (prev.find(item => item.id === c.id)) {
+        return prev.map(item => item.id === c.id ? c : item);
+      } else {
+        return [...prev, c];
+      }
+    });
+    setEditingCase(null);
+    setIsAdding(false);
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex justify-between items-center mb-6 shrink-0">
+        <h3 className="text-lg font-bold text-gray-800">所有案件</h3>
+        <button 
+          onClick={() => {
+            setIsAdding(true);
+            setEditingCase({ id: generateId('C-'), code: `CASE-${Math.floor(1000 + Math.random() * 9000)}`, name: '', description: '', isOpen: true });
+          }}
+          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow"
+        >
+          <Icons.Plus /> 创建案件
+        </button>
+      </div>
+      <div className="grid gap-4 overflow-y-auto pr-2 pb-4">
+        {cases.map(c => (
+          <div key={c.id} className="border border-gray-200 rounded-xl p-4 flex justify-between items-start bg-white hover:border-indigo-200 transition-colors shrink-0">
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">{c.code}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${c.isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                  {c.isOpen ? '打开' : '已关闭'}
+                </span>
+              </div>
+              <h4 className="font-bold text-gray-800">{c.name}</h4>
+              <p className="text-sm text-gray-500 mt-1">{c.description || '无描述'}</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setEditingCase(c)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"><Icons.Edit /></button>
+              <button 
+                type="button"
+                onClick={() => handleDelete(c.id)} 
+                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <Icons.Trash />
+              </button>
+            </div>
+          </div>
+        ))}
+        {cases.length === 0 && <p className="text-center py-20 text-gray-400">暂无案件数据</p>}
+      </div>
+      {(editingCase || isAdding) && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+            <h4 className="text-lg font-bold mb-4">{isAdding ? '创建新案件' : '编辑案件'}</h4>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">案件编码 (不可修改)</label>
+                <input readOnly value={editingCase?.code} className="w-full bg-gray-100 border border-gray-200 rounded p-2 text-gray-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">案件名称</label>
+                <input autoFocus value={editingCase?.name} onChange={(e) => setEditingCase(prev => prev ? {...prev, name: e.target.value} : null)} className="w-full border border-gray-300 rounded p-2 outline-none focus:ring-2 focus:ring-indigo-200" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">案件描述</label>
+                <textarea value={editingCase?.description} onChange={(e) => setEditingCase(prev => prev ? {...prev, description: e.target.value} : null)} className="w-full border border-gray-300 rounded p-2 outline-none h-24 focus:ring-2 focus:ring-indigo-200" />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="isOpen" checked={editingCase?.isOpen} onChange={(e) => setEditingCase(prev => prev ? {...prev, isOpen: e.target.checked} : null)} className="w-4 h-4 text-indigo-600 rounded" />
+                <label htmlFor="isOpen" className="text-sm font-medium text-gray-700">启用案件 (打开状态)</label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-8">
+              <button onClick={() => { setEditingCase(null); setIsAdding(false); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">取消</button>
+              <button onClick={() => editingCase && saveCase(editingCase)} disabled={!editingCase?.name} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 shadow font-bold">保存</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const WorkTypeManagement: React.FC<{
   workTypes: string[];
   setWorkTypes: React.Dispatch<React.SetStateAction<string[]>>;
@@ -523,115 +651,6 @@ const WorkTypeManagement: React.FC<{
   );
 };
 
-const CaseManagement: React.FC<{
-  cases: Case[];
-  setCases: React.Dispatch<React.SetStateAction<Case[]>>;
-  showConfirm: (config: any) => void;
-}> = ({ cases, setCases, showConfirm }) => {
-  const [editingCase, setEditingCase] = useState<Case | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
-
-  const handleDelete = (id: string) => {
-    showConfirm({
-      title: "删除案件",
-      message: "确定要删除此案件吗？相关的计时记录将保留，但不再与该案件关联。",
-      isDestructive: true,
-      confirmText: "确认删除",
-      onConfirm: () => {
-        setCases(prev => prev.filter(c => c.id !== id));
-      }
-    });
-  };
-
-  const saveCase = (c: Case) => {
-    setCases(prev => {
-      if (prev.find(item => item.id === c.id)) {
-        return prev.map(item => item.id === c.id ? c : item);
-      } else {
-        return [...prev, c];
-      }
-    });
-    setEditingCase(null);
-    setIsAdding(false);
-  };
-
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex justify-between items-center mb-6 shrink-0">
-        <h3 className="text-lg font-bold text-gray-800">所有案件</h3>
-        <button 
-          onClick={() => {
-            setIsAdding(true);
-            setEditingCase({ id: generateId('C-'), code: `CASE-${Math.floor(1000 + Math.random() * 9000)}`, name: '', description: '', isOpen: true });
-          }}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow"
-        >
-          <Icons.Plus /> 创建案件
-        </button>
-      </div>
-      <div className="grid gap-4 overflow-y-auto pr-2 pb-4">
-        {cases.map(c => (
-          <div key={c.id} className="border border-gray-200 rounded-xl p-4 flex justify-between items-start bg-white hover:border-indigo-200 transition-colors shrink-0">
-            <div>
-              <div className="flex items-center gap-3 mb-1">
-                <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">{c.code}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${c.isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
-                  {c.isOpen ? '打开' : '已关闭'}
-                </span>
-              </div>
-              <h4 className="font-bold text-gray-800">{c.name}</h4>
-              <p className="text-sm text-gray-500 mt-1">{c.description || '无描述'}</p>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setEditingCase(c)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"><Icons.Edit /></button>
-              <button 
-                type="button"
-                onClick={() => handleDelete(c.id)} 
-                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              >
-                <Icons.Trash />
-              </button>
-            </div>
-          </div>
-        ))}
-        {cases.length === 0 && <p className="text-center py-10 text-gray-400">暂无案件数据</p>}
-      </div>
-      {(editingCase || isAdding) && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
-            <h4 className="text-lg font-bold mb-4">{isAdding ? '创建新案件' : '编辑案件'}</h4>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">案件编码 (不可修改)</label>
-                <input readOnly value={editingCase?.code} className="w-full bg-gray-100 border border-gray-200 rounded p-2 text-gray-500 outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">案件名称</label>
-                <input autoFocus value={editingCase?.name} onChange={(e) => setEditingCase(prev => prev ? {...prev, name: e.target.value} : null)} className="w-full border border-gray-300 rounded p-2 outline-none focus:ring-2 focus:ring-indigo-200" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">案件描述</label>
-                <textarea value={editingCase?.description} onChange={(e) => setEditingCase(prev => prev ? {...prev, description: e.target.value} : null)} className="w-full border border-gray-300 rounded p-2 outline-none h-24 focus:ring-2 focus:ring-indigo-200" />
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="isOpen" checked={editingCase?.isOpen} onChange={(e) => setEditingCase(prev => prev ? {...prev, isOpen: e.target.checked} : null)} className="w-4 h-4 text-indigo-600 rounded" />
-                <label htmlFor="isOpen" className="text-sm font-medium text-gray-700">启用案件 (打开状态)</label>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-8">
-              <button onClick={() => { setEditingCase(null); setIsAdding(false); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">取消</button>
-              <button onClick={() => editingCase && saveCase(editingCase)} disabled={!editingCase?.name} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 shadow font-bold">保存</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-type SortField = 'case' | 'type' | 'time' | 'duration';
-type SortOrder = 'asc' | 'desc';
-
 const RecordManagement: React.FC<{
   cases: Case[];
   entries: TimeEntry[];
@@ -716,6 +735,7 @@ const RecordManagement: React.FC<{
       id: generateId('REC-'),
       caseId: targetCaseId,
       workType: workTypes[0] || '会议',
+      attorney: '',
       notes: '',
       startTime: startTime,
       endTime: endTime,
@@ -885,6 +905,16 @@ const RecordManagement: React.FC<{
                 />
               </div>
               <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">经办律师</label>
+                <input 
+                  type="text" 
+                  value={editingEntry.attorney || ''} 
+                  onChange={(e) => setEditingEntry({...editingEntry, attorney: e.target.value})} 
+                  placeholder="输入律师姓名"
+                  className="w-full border border-gray-300 rounded p-2 outline-none focus:ring-2 focus:ring-indigo-200" 
+                />
+              </div>
+              <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">注释</label>
                 <textarea value={editingEntry.notes} onChange={(e) => setEditingEntry({...editingEntry, notes: e.target.value})} className="w-full border border-gray-300 rounded p-2 outline-none h-20" />
               </div>
@@ -968,15 +998,19 @@ const ReportGeneration: React.FC<{
   }, [filtered, cases]);
 
   const handleExportCsv = () => {
-    const headers = ['案件', '工作类型', '注释', '开始', '结束', '时长'];
+    const headers = ['案件', '工作类型', '注释', '经办律师', '开始', '结束', '时长(m)'];
     const rows = filtered.map(e => [
       cases.find(c => c.id === e.caseId)?.name || '未知',
-      e.workType, e.notes,
-      formatDateTime(e.startTime), formatDateTime(e.endTime), e.duration.toString()
+      e.workType, 
+      e.notes,
+      e.attorney || '',
+      formatDateTime(e.startTime), 
+      formatDateTime(e.endTime), 
+      e.duration.toString()
     ]);
-    rows.push(['', '', '', '', '', '']);
+    rows.push(['', '', '', '', '', '', '']);
     stats.forEach(s => {
-      rows.push([s.case, '总计', '', '', '', s.total.toString()]);
+      rows.push([s.case, '总计', '', '', '', '', s.total.toString()]);
     });
     downloadCsv(headers, rows, `Report_${startDate}_${endDate}.csv`);
   };

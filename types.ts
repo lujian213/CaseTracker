@@ -18,15 +18,16 @@ export interface Case {
 export interface TimeEntry {
   id: string;
   caseId: string;
-  workType: string; // Changed from WorkType enum to string to support custom inputs
+  workType: string;
+  attorney: string; // 新增：经办律师
   notes: string;
   startTime: number;
-  endTime: number | null; // null if currently active
-  duration: number; // in minutes
+  endTime: number | null;
+  duration: number;
 }
 
 export interface AppData {
   cases: Case[];
   entries: TimeEntry[];
-  workTypes: string[]; // Added for dynamic work type management
+  workTypes: string[];
 }
