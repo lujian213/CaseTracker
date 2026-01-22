@@ -7,6 +7,8 @@ import { Icons } from './constants';
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
 const DEFAULT_WORK_TYPES = Object.values(WorkType);
 
+type AdminTab = 'cases' | 'worktypes' | 'records' | 'reports' | 'system';
+
 // --- 可编辑下拉选择组件 ---
 const EditableSelect: React.FC<{
   value: string;
@@ -117,7 +119,7 @@ const App: React.FC = () => {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [workTypes, setWorkTypes] = useState<string[]>(DEFAULT_WORK_TYPES);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [adminTab, setAdminTab] = useState<'cases' | 'worktypes' | 'records' | 'reports' | 'system'>('cases');
+  const [adminTab, setAdminTab] = useState<AdminTab>('cases');
 
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
@@ -334,8 +336,8 @@ const CaseRow: React.FC<{
 };
 
 const AdminOverlay: React.FC<{
-  tab: string;
-  setTab: (t: any) => void;
+  tab: AdminTab;
+  setTab: (t: AdminTab) => void;
   onClose: () => void;
   cases: Case[];
   setCases: React.Dispatch<React.SetStateAction<Case[]>>;
@@ -361,7 +363,7 @@ const AdminOverlay: React.FC<{
               { id: 'reports', label: '统计报表' },
               { id: 'system', label: '系统备份' },
             ].map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} className={`text-left px-4 py-2.5 rounded-lg transition-colors font-medium ${tab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}>
+              <button key={t.id} onClick={() => setTab(t.id as AdminTab)} className={`text-left px-4 py-2.5 rounded-lg transition-colors font-medium ${tab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}>
                 {t.label}
               </button>
             ))}
