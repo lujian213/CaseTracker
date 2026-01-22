@@ -18,7 +18,7 @@ export interface Case {
 export interface TimeEntry {
   id: string;
   caseId: string;
-  workType: WorkType;
+  workType: string; // Changed from WorkType enum to string to support custom inputs
   notes: string;
   startTime: number;
   endTime: number | null; // null if currently active
@@ -28,4 +28,5 @@ export interface TimeEntry {
 export interface AppData {
   cases: Case[];
   entries: TimeEntry[];
+  workTypes: string[]; // Added for dynamic work type management
 }

@@ -1,9 +1,79 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Case, TimeEntry, WorkType, AppData } from './types';
 import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, downloadCsv } from './utils';
 import { Icons } from './constants';
 
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
+const DEFAULT_WORK_TYPES = Object.values(WorkType);
+
+// --- 可编辑下拉选择组件 ---
+const EditableSelect: React.FC<{
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  placeholder?: string;
+  className?: string;
+}> = ({ value, onChange, options, placeholder, className = "" }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className={`relative ${className}`} ref={containerRef}>
+      <div className="relative">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white focus:ring-2 focus:ring-indigo-200 outline-none pr-8 transition-shadow"
+        />
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="absolute right-0 top-0 h-full px-2 text-gray-400 hover:text-indigo-600 transition-colors"
+        >
+          <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
+      {isOpen && (
+        <div className="absolute z-[110] left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden max-h-48 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
+          {options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => {
+                onChange(opt);
+                setIsOpen(false);
+              }}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${value === opt ? 'bg-indigo-50 text-indigo-700 font-bold' : 'hover:bg-gray-50 text-gray-700'}`}
+            >
+              {opt}
+            </button>
+          ))}
+          {value && !options.includes(value) && (
+             <div className="px-3 py-1.5 text-[10px] bg-gray-50 text-gray-400 border-t border-gray-100 italic">
+               正在使用自定义类型: "{value}"
+             </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // --- 自定义确认对话框组件 ---
 const ConfirmDialog: React.FC<{
@@ -17,7 +87,7 @@ const ConfirmDialog: React.FC<{
 }> = ({ isOpen, title, message, onConfirm, onCancel, confirmText = "确认", isDestructive = false }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs overflow-hidden animate-in fade-in zoom-in duration-200 border border-gray-100">
         <div className="p-5">
           <h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3>
@@ -45,10 +115,10 @@ const ConfirmDialog: React.FC<{
 const App: React.FC = () => {
   const [cases, setCases] = useState<Case[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const [workTypes, setWorkTypes] = useState<string[]>(DEFAULT_WORK_TYPES);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [adminTab, setAdminTab] = useState<'cases' | 'records' | 'reports' | 'system'>('cases');
+  const [adminTab, setAdminTab] = useState<'cases' | 'worktypes' | 'records' | 'reports' | 'system'>('cases');
 
-  // 确认对话框全局状态
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -67,7 +137,6 @@ const App: React.FC = () => {
     setConfirmConfig({ ...config, isOpen: true });
   };
 
-  // Load Data
   useEffect(() => {
     const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (stored) {
@@ -75,17 +144,17 @@ const App: React.FC = () => {
         const parsed: AppData = JSON.parse(stored);
         if (parsed.cases) setCases(parsed.cases);
         if (parsed.entries) setEntries(parsed.entries);
+        if (parsed.workTypes) setWorkTypes(parsed.workTypes);
       } catch (e) {
         console.error("Failed to load data", e);
       }
     }
   }, []);
 
-  // Save Data
   useEffect(() => {
-    const data: AppData = { cases, entries };
+    const data: AppData = { cases, entries, workTypes };
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-  }, [cases, entries]);
+  }, [cases, entries, workTypes]);
 
   const stopAllTimers = useCallback((timestampArg?: any) => {
     const timestamp = (typeof timestampArg === 'number') ? timestampArg : Date.now();
@@ -101,7 +170,7 @@ const App: React.FC = () => {
     }));
   }, []);
 
-  const startTimer = useCallback((caseId: string, workType: WorkType, notes: string) => {
+  const startTimer = useCallback((caseId: string, workType: string, notes: string) => {
     const now = Date.now();
     stopAllTimers(now);
     const newEntry: TimeEntry = {
@@ -141,6 +210,7 @@ const App: React.FC = () => {
         <Dashboard 
           cases={cases.filter(c => c.isOpen)} 
           entries={entries}
+          workTypes={workTypes}
           onStart={startTimer}
           onStop={() => stopAllTimers()}
         />
@@ -155,6 +225,8 @@ const App: React.FC = () => {
           setCases={setCases}
           entries={entries}
           setEntries={setEntries}
+          workTypes={workTypes}
+          setWorkTypes={setWorkTypes}
           showConfirm={showConfirm}
         />
       )}
@@ -165,9 +237,10 @@ const App: React.FC = () => {
 const Dashboard: React.FC<{
   cases: Case[];
   entries: TimeEntry[];
-  onStart: (id: string, type: WorkType, notes: string) => void;
+  workTypes: string[];
+  onStart: (id: string, type: string, notes: string) => void;
   onStop: () => void;
-}> = ({ cases, entries, onStart, onStop }) => {
+}> = ({ cases, entries, workTypes, onStart, onStop }) => {
   const activeEntry = entries.find(e => e.endTime === null);
   return (
     <div className="space-y-4">
@@ -184,6 +257,7 @@ const Dashboard: React.FC<{
                 <CaseRow 
                   key={c.id} 
                   caseItem={c} 
+                  workTypes={workTypes}
                   onStart={onStart} 
                   onStop={onStop}
                   isActive={activeEntry?.caseId === c.id}
@@ -207,12 +281,23 @@ const Dashboard: React.FC<{
 
 const CaseRow: React.FC<{
   caseItem: Case;
-  onStart: (id: string, type: WorkType, notes: string) => void;
+  workTypes: string[];
+  onStart: (id: string, type: string, notes: string) => void;
   onStop: () => void;
   isActive: boolean;
-}> = ({ caseItem, onStart, onStop, isActive }) => {
-  const [workType, setWorkType] = useState<WorkType>(WorkType.Meeting);
+}> = ({ caseItem, workTypes, onStart, onStop, isActive }) => {
+  const [workType, setWorkType] = useState<string>(workTypes[0] || '会议');
   const [notes, setNotes] = useState('');
+  
+  // Ensure we sync the local workType state if workTypes change and the current one is gone
+  useEffect(() => {
+    if (!workTypes.includes(workType) && workTypes.length > 0) {
+      setWorkType(workTypes[0]);
+    } else if (workTypes.length > 0 && workType === '') {
+      setWorkType(workTypes[0]);
+    }
+  }, [workTypes, workType]);
+
   return (
     <div className={`p-4 transition-colors flex flex-col md:flex-row md:items-center gap-4 ${isActive ? 'bg-indigo-50 border-l-4 border-indigo-500' : 'hover:bg-gray-50'}`}>
       <div className="flex-grow">
@@ -220,13 +305,13 @@ const CaseRow: React.FC<{
         <p className="text-xs text-gray-500 font-mono">{caseItem.code}</p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <select 
+        <EditableSelect 
           value={workType}
-          onChange={(e) => setWorkType(e.target.value as WorkType)}
-          className="border border-gray-300 rounded px-2 py-1 text-sm bg-white focus:ring-2 focus:ring-indigo-200 outline-none"
-        >
-          {Object.values(WorkType).map(type => <option key={type} value={type}>{type}</option>)}
-        </select>
+          onChange={setWorkType}
+          options={workTypes}
+          className="w-full md:w-32"
+          placeholder="类型"
+        />
         <input 
           type="text" 
           placeholder="注释 (可选)"
@@ -256,8 +341,10 @@ const AdminOverlay: React.FC<{
   setCases: React.Dispatch<React.SetStateAction<Case[]>>;
   entries: TimeEntry[];
   setEntries: React.Dispatch<React.SetStateAction<TimeEntry[]>>;
+  workTypes: string[];
+  setWorkTypes: React.Dispatch<React.SetStateAction<string[]>>;
   showConfirm: (config: any) => void;
-}> = ({ tab, setTab, onClose, cases, setCases, entries, setEntries, showConfirm }) => {
+}> = ({ tab, setTab, onClose, cases, setCases, entries, setEntries, workTypes, setWorkTypes, showConfirm }) => {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
@@ -269,6 +356,7 @@ const AdminOverlay: React.FC<{
           <div className="w-48 border-r border-gray-100 bg-gray-50 flex flex-col p-4 gap-2 shrink-0">
             {[
               { id: 'cases', label: '案件管理' },
+              { id: 'worktypes', label: '类型管理' },
               { id: 'records', label: '记录管理' },
               { id: 'reports', label: '统计报表' },
               { id: 'system', label: '系统备份' },
@@ -280,10 +368,153 @@ const AdminOverlay: React.FC<{
           </div>
           <div className="flex-1 p-6 bg-white overflow-hidden">
             {tab === 'cases' && <CaseManagement cases={cases} setCases={setCases} showConfirm={showConfirm} />}
-            {tab === 'records' && <RecordManagement cases={cases} entries={entries} setEntries={setEntries} showConfirm={showConfirm} />}
+            {tab === 'worktypes' && <WorkTypeManagement workTypes={workTypes} setWorkTypes={setWorkTypes} showConfirm={showConfirm} />}
+            {tab === 'records' && <RecordManagement cases={cases} entries={entries} workTypes={workTypes} setEntries={setEntries} showConfirm={showConfirm} />}
             {tab === 'reports' && <ReportGeneration cases={cases} entries={entries} />}
-            {tab === 'system' && <SystemManagement cases={cases} entries={entries} setCases={setCases} setEntries={setEntries} showConfirm={showConfirm} />}
+            {tab === 'system' && <SystemManagement cases={cases} entries={entries} workTypes={workTypes} setCases={setCases} setEntries={setEntries} setWorkTypes={setWorkTypes} showConfirm={showConfirm} />}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- 工作类型管理组件 ---
+const WorkTypeManagement: React.FC<{
+  workTypes: string[];
+  setWorkTypes: React.Dispatch<React.SetStateAction<string[]>>;
+  showConfirm: (config: any) => void;
+}> = ({ workTypes, setWorkTypes, showConfirm }) => {
+  const [newType, setNewType] = useState('');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingValue, setEditingValue] = useState('');
+
+  const handleAdd = () => {
+    const val = newType.trim();
+    if (!val) return;
+    if (workTypes.includes(val)) {
+      window.alert("该工作类型已存在");
+      return;
+    }
+    setWorkTypes(prev => [...prev, val]);
+    setNewType('');
+  };
+
+  const handleDelete = (type: string) => {
+    showConfirm({
+      title: "删除工作类型",
+      message: `确定要删除 "${type}" 吗？这不会影响已有的计时记录，但之后将无法直接选择此项。`,
+      isDestructive: true,
+      confirmText: "确认删除",
+      onConfirm: () => {
+        setWorkTypes(prev => prev.filter(t => t !== type));
+      }
+    });
+  };
+
+  const moveType = (index: number, direction: 'up' | 'down') => {
+    const newTypes = [...workTypes];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newTypes.length) return;
+    
+    [newTypes[index], newTypes[targetIndex]] = [newTypes[targetIndex], newTypes[index]];
+    setWorkTypes(newTypes);
+  };
+
+  const startEdit = (index: number) => {
+    setEditingIndex(index);
+    setEditingValue(workTypes[index]);
+  };
+
+  const saveEdit = () => {
+    if (editingIndex === null) return;
+    const val = editingValue.trim();
+    if (!val) return;
+    if (workTypes.some((t, i) => t === val && i !== editingIndex)) {
+      window.alert("该名称已存在");
+      return;
+    }
+    setWorkTypes(prev => prev.map((t, i) => i === editingIndex ? val : t));
+    setEditingIndex(null);
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <h3 className="text-lg font-bold text-gray-800 mb-6">工作类型管理</h3>
+      
+      <div className="flex gap-2 mb-6 shrink-0">
+        <input 
+          type="text" 
+          placeholder="新类型名称 (例如: 法律咨询)"
+          value={newType}
+          onChange={(e) => setNewType(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          className="flex-grow border border-gray-300 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-indigo-200"
+        />
+        <button 
+          onClick={handleAdd}
+          className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-700 shadow flex items-center gap-2"
+        >
+          <Icons.Plus /> 添加
+        </button>
+      </div>
+
+      <div className="flex-grow overflow-y-auto pr-2 pb-4">
+        <div className="grid gap-2">
+          {workTypes.map((type, index) => (
+            <div key={type + index} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl hover:border-indigo-200 transition-colors">
+              <div className="flex items-center gap-2">
+                 <div className="flex flex-col">
+                    <button 
+                      onClick={() => moveType(index, 'up')} 
+                      disabled={index === 0}
+                      className="p-1 text-gray-400 hover:text-indigo-600 disabled:opacity-20 transition-colors"
+                    >
+                      <Icons.ArrowUp />
+                    </button>
+                    <button 
+                      onClick={() => moveType(index, 'down')} 
+                      disabled={index === workTypes.length - 1}
+                      className="p-1 text-gray-400 hover:text-indigo-600 disabled:opacity-20 transition-colors"
+                    >
+                      <Icons.ArrowDown />
+                    </button>
+                 </div>
+                 {index === 0 && (
+                   <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded font-black uppercase">默认</span>
+                 )}
+              </div>
+              
+              <div className="flex-grow ml-4">
+                {editingIndex === index ? (
+                  <div className="flex gap-2">
+                     <input 
+                      autoFocus
+                      value={editingValue}
+                      onChange={(e) => setEditingValue(e.target.value)}
+                      className="flex-grow border border-indigo-300 rounded px-2 py-1 outline-none text-sm"
+                    />
+                    <button onClick={saveEdit} className="text-green-600 font-bold text-xs px-2 hover:bg-green-50 rounded">保存</button>
+                    <button onClick={() => setEditingIndex(null)} className="text-gray-400 font-bold text-xs px-2 hover:bg-gray-100 rounded">取消</button>
+                  </div>
+                ) : (
+                  <span className="font-medium text-gray-700">{type}</span>
+                )}
+              </div>
+
+              {editingIndex !== index && (
+                <div className="flex gap-1">
+                  <button onClick={() => startEdit(index)} className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors">
+                    <Icons.Edit />
+                  </button>
+                  <button onClick={() => handleDelete(type)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                    <Icons.Trash />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {workTypes.length === 0 && <p className="text-center py-10 text-gray-400">尚未定义任何工作类型</p>}
         </div>
       </div>
     </div>
@@ -364,7 +595,7 @@ const CaseManagement: React.FC<{
         {cases.length === 0 && <p className="text-center py-10 text-gray-400">暂无案件数据</p>}
       </div>
       {(editingCase || isAdding) && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
             <h4 className="text-lg font-bold mb-4">{isAdding ? '创建新案件' : '编辑案件'}</h4>
             <div className="space-y-4">
@@ -402,9 +633,10 @@ type SortOrder = 'asc' | 'desc';
 const RecordManagement: React.FC<{
   cases: Case[];
   entries: TimeEntry[];
+  workTypes: string[];
   setEntries: React.Dispatch<React.SetStateAction<TimeEntry[]>>;
   showConfirm: (config: any) => void;
-}> = ({ cases, entries, setEntries, showConfirm }) => {
+}> = ({ cases, entries, workTypes, setEntries, showConfirm }) => {
   const [selectedCaseId, setSelectedCaseId] = useState<string>('');
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [batchSelection, setBatchSelection] = useState<string[]>([]);
@@ -481,7 +713,7 @@ const RecordManagement: React.FC<{
     const newEntry: TimeEntry = {
       id: generateId('REC-'),
       caseId: targetCaseId,
-      workType: WorkType.Meeting,
+      workType: workTypes[0] || '会议',
       notes: '',
       startTime: startTime,
       endTime: endTime,
@@ -571,7 +803,7 @@ const RecordManagement: React.FC<{
               <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none w-[20%]" onClick={() => handleSort('case')}>
                 案件 <SortIndicator field="case" />
               </th>
-              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none w-[80px]" onClick={() => handleSort('type')}>
+              <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none w-[110px]" onClick={() => handleSort('type')}>
                 类型 <SortIndicator field="type" />
               </th>
               <th className="px-4 py-3 cursor-pointer hover:text-indigo-600 transition-colors select-none w-[130px]" onClick={() => handleSort('time')}>
@@ -599,7 +831,7 @@ const RecordManagement: React.FC<{
                       className={isActive ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
                     />
                   </td>
-                  <td className="px-4 py-3 font-medium truncate" title={c?.name}>{c?.name || '未知'}</td>
+                  <td className="px-4 py-3 font-medium truncate" title={c?.description || c?.name || '未知'}>{c?.name || '未知'}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold block truncate text-center ${isActive ? 'bg-green-100 text-green-700' : 'bg-indigo-50 text-indigo-700'}`}>
                       {e.workType}
@@ -626,7 +858,7 @@ const RecordManagement: React.FC<{
         {sortedEntries.length === 0 && <p className="text-center py-20 text-gray-400 bg-white">没有找到相关计时记录</p>}
       </div>
       {editingEntry && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
             <h4 className="text-lg font-bold mb-4">编辑计时记录</h4>
             <div className="space-y-4">
@@ -642,9 +874,13 @@ const RecordManagement: React.FC<{
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">工作类型</label>
-                <select value={editingEntry.workType} onChange={(e) => setEditingEntry({...editingEntry, workType: e.target.value as WorkType})} className="w-full border border-gray-300 rounded p-2 outline-none">
-                  {Object.values(WorkType).map(type => <option key={type} value={type}>{type}</option>)}
-                </select>
+                <EditableSelect 
+                  value={editingEntry.workType} 
+                  onChange={(val) => setEditingEntry({...editingEntry, workType: val})} 
+                  options={workTypes}
+                  placeholder="选择或输入工作类型"
+                  className="w-full"
+                />
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">注释</label>
@@ -792,27 +1028,30 @@ const ReportGeneration: React.FC<{
           <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[10px] sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 w-[25%]">案件</th>
-              <th className="px-4 py-3 w-[80px] text-center">类型</th>
+              <th className="px-4 py-3 w-[110px] text-center">类型</th>
               <th className="px-4 py-3 w-[130px]">起止时间</th>
               <th className="px-4 py-3 w-[70px] text-right">时长</th>
               <th className="px-4 py-3">注释</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 bg-white">
-            {filtered.map(e => (
-              <tr key={e.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3 font-semibold text-gray-700 truncate" title={cases.find(c => c.id === e.caseId)?.name}>{cases.find(c => c.id === e.caseId)?.name || '未知'}</td>
-                <td className="px-4 py-3 text-center">
-                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[9px] uppercase font-bold">{e.workType}</span>
-                </td>
-                <td className="px-4 py-3 text-gray-500 font-mono text-[10px] leading-tight">
-                  {formatDateTime(e.startTime)}<br/>
-                  {formatDateTime(e.endTime)}
-                </td>
-                <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">{e.duration}m</td>
-                <td className="px-4 py-3 text-gray-500 italic truncate" title={e.notes || '无注释'}>{e.notes || '-'}</td>
-              </tr>
-            ))}
+            {filtered.map(e => {
+              const c = cases.find(item => item.id === e.caseId);
+              return (
+                <tr key={e.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 font-semibold text-gray-700 truncate" title={c?.description || c?.name || '未知'}>{c?.name || '未知'}</td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[9px] uppercase font-bold">{e.workType}</span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-500 font-mono text-[10px] leading-tight">
+                    {formatDateTime(e.startTime)}<br/>
+                    {formatDateTime(e.endTime)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">{e.duration}m</td>
+                  <td className="px-4 py-3 text-gray-500 italic truncate" title={e.notes || '无注释'}>{e.notes || '-'}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {filtered.length === 0 && <p className="text-center py-20 text-gray-400 bg-white">该时间段内暂无满足条件的记录</p>}
@@ -822,11 +1061,12 @@ const ReportGeneration: React.FC<{
 };
 
 const SystemManagement: React.FC<{
-  cases: Case[]; entries: TimeEntry[];
+  cases: Case[]; entries: TimeEntry[]; workTypes: string[];
   setCases: React.Dispatch<React.SetStateAction<Case[]>>;
   setEntries: React.Dispatch<React.SetStateAction<TimeEntry[]>>;
+  setWorkTypes: React.Dispatch<React.SetStateAction<string[]>>;
   showConfirm: (config: any) => void;
-}> = ({ cases, entries, setCases, setEntries, showConfirm }) => {
+}> = ({ cases, entries, workTypes, setCases, setEntries, setWorkTypes, showConfirm }) => {
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     try {
@@ -835,7 +1075,11 @@ const SystemManagement: React.FC<{
       if (parsed && Array.isArray(parsed.cases) && Array.isArray(parsed.entries)) {
         showConfirm({
           title: "恢复备份数据", message: "这将会清除当前所有数据并覆盖为备份文件内容。确定要继续吗？",
-          isDestructive: true, confirmText: "确认恢复", onConfirm: () => { setCases(parsed.cases); setEntries(parsed.entries); }
+          isDestructive: true, confirmText: "确认恢复", onConfirm: () => { 
+            setCases(parsed.cases); 
+            setEntries(parsed.entries);
+            if (parsed.workTypes) setWorkTypes(parsed.workTypes);
+          }
         });
       } else { window.alert("非法的备份文件格式。"); }
     } catch (err) { window.alert("读取文件失败"); } finally { e.target.value = ''; }
@@ -844,7 +1088,7 @@ const SystemManagement: React.FC<{
     <div className="max-w-xl mx-auto py-10 text-center">
       <div className="bg-indigo-50 p-8 rounded-2xl border border-indigo-100 mb-8">
         <h4 className="text-xl font-black text-indigo-900 mb-4">备份数据</h4>
-        <button onClick={() => downloadJson({ cases, entries, timestamp: Date.now() }, `Chronos_Backup_${Date.now()}.json`)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-3 rounded-xl font-bold transition-all shadow-lg">立即备份 (JSON)</button>
+        <button onClick={() => downloadJson({ cases, entries, workTypes, timestamp: Date.now() }, `Chronos_Backup_${Date.now()}.json`)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-3 rounded-xl font-bold transition-all shadow-lg">立即备份 (JSON)</button>
       </div>
       <div className="border-2 border-dashed border-gray-200 rounded-2xl p-10 hover:border-indigo-300 transition-colors">
         <h4 className="font-bold text-gray-700 mb-4">恢复备份</h4>
