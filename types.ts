@@ -19,7 +19,7 @@ export interface TimeEntry {
   id: string;
   caseId: string;
   workType: string;
-  attorney: string; // 新增：经办律师
+  workContent: string; // 已修改：从 attorney 改为 workContent
   notes: string;
   startTime: number;
   endTime: number | null;

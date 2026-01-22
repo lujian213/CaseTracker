@@ -175,14 +175,14 @@ const App: React.FC = () => {
     }));
   }, []);
 
-  const startTimer = useCallback((caseId: string, workType: string, attorney: string, notes: string) => {
+  const startTimer = useCallback((caseId: string, workType: string, workContent: string, notes: string) => {
     const now = Date.now();
     stopAllTimers(now);
     const newEntry: TimeEntry = {
       id: generateId('REC-'),
       caseId,
       workType,
-      attorney,
+      workContent,
       notes,
       startTime: now,
       endTime: null,
@@ -244,7 +244,7 @@ const Dashboard: React.FC<{
   cases: Case[];
   entries: TimeEntry[];
   workTypes: string[];
-  onStart: (id: string, type: string, attorney: string, notes: string) => void;
+  onStart: (id: string, type: string, content: string, notes: string) => void;
   onStop: () => void;
 }> = ({ cases, entries, workTypes, onStart, onStop }) => {
   const activeEntry = entries.find(e => e.endTime === null);
@@ -288,12 +288,12 @@ const Dashboard: React.FC<{
 const CaseRow: React.FC<{
   caseItem: Case;
   workTypes: string[];
-  onStart: (id: string, type: string, attorney: string, notes: string) => void;
+  onStart: (id: string, type: string, content: string, notes: string) => void;
   onStop: () => void;
   isActive: boolean;
 }> = ({ caseItem, workTypes, onStart, onStop, isActive }) => {
   const [workType, setWorkType] = useState<string>(workTypes[0] || '会议');
-  const [attorney, setAttorney] = useState('');
+  const [workContent, setWorkContent] = useState('');
   const [notes, setNotes] = useState('');
   
   useEffect(() => {
@@ -311,7 +311,6 @@ const CaseRow: React.FC<{
           {caseItem.name}
           <Icons.ChevronRight className="opacity-0 group-hover:opacity-30 transition-opacity w-3 h-3" />
         </h3>
-        {/* Tooltip 浮窗 - 改进 */}
         <div className="absolute z-[150] bottom-full left-0 mb-3 invisible group-hover:visible w-72 p-3 bg-gray-900/95 backdrop-blur text-white text-xs rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none translate-y-1 group-hover:translate-y-0">
           <p className="font-bold border-b border-white/10 pb-2 mb-2 text-indigo-300">案件描述</p>
           <p className="leading-relaxed whitespace-pre-wrap">{caseItem.description || caseItem.name}</p>
@@ -329,9 +328,9 @@ const CaseRow: React.FC<{
         />
         <input 
           type="text" 
-          placeholder="经办律师"
-          value={attorney}
-          onChange={(e) => setAttorney(e.target.value)}
+          placeholder="工作内容"
+          value={workContent}
+          onChange={(e) => setWorkContent(e.target.value)}
           className="border border-gray-300 rounded px-2 py-1 text-sm md:w-28 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
         />
         <input 
@@ -346,7 +345,7 @@ const CaseRow: React.FC<{
             <Icons.Stop /> 停止计时
           </button>
         ) : (
-          <button onClick={() => onStart(caseItem.id, workType, attorney, notes)} className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-sm font-bold shadow transition-colors">
+          <button onClick={() => onStart(caseItem.id, workType, workContent, notes)} className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-sm font-bold shadow transition-colors">
             <Icons.Play /> 开始计时
           </button>
         )}
@@ -418,7 +417,6 @@ const CaseManagement: React.FC<{
       confirmText: "确认删除",
       onConfirm: () => {
         setCases(prev => prev.filter(c => c.id !== id));
-        // 联动删除相关记录
         setEntries(prev => prev.filter(e => e.caseId !== id));
       }
     });
@@ -735,7 +733,7 @@ const RecordManagement: React.FC<{
       id: generateId('REC-'),
       caseId: targetCaseId,
       workType: workTypes[0] || '会议',
-      attorney: '',
+      workContent: '',
       notes: '',
       startTime: startTime,
       endTime: endTime,
@@ -905,12 +903,12 @@ const RecordManagement: React.FC<{
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">经办律师</label>
+                <label className="block text-xs font-bold text-gray-500 mb-1">工作内容</label>
                 <input 
                   type="text" 
-                  value={editingEntry.attorney || ''} 
-                  onChange={(e) => setEditingEntry({...editingEntry, attorney: e.target.value})} 
-                  placeholder="输入律师姓名"
+                  value={editingEntry.workContent || ''} 
+                  onChange={(e) => setEditingEntry({...editingEntry, workContent: e.target.value})} 
+                  placeholder="输入工作内容"
                   className="w-full border border-gray-300 rounded p-2 outline-none focus:ring-2 focus:ring-indigo-200" 
                 />
               </div>
@@ -998,12 +996,13 @@ const ReportGeneration: React.FC<{
   }, [filtered, cases]);
 
   const handleExportCsv = () => {
-    const headers = ['案件', '工作类型', '注释', '经办律师', '开始', '结束', '时长(m)'];
+    // 已更新：CSV 表头增加“工作内容”，位置在注释之后
+    const headers = ['案件', '工作类型', '注释', '工作内容', '开始', '结束', '时长(m)'];
     const rows = filtered.map(e => [
       cases.find(c => c.id === e.caseId)?.name || '未知',
       e.workType, 
       e.notes,
-      e.attorney || '',
+      e.workContent || '',
       formatDateTime(e.startTime), 
       formatDateTime(e.endTime), 
       e.duration.toString()
