@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Case, TimeEntry, WorkType, AppData } from './types';
-import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, downloadCsv } from './utils';
+import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, downloadCsv, formatDurationDisplay } from './utils';
 import { Icons } from './constants';
 
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
@@ -862,7 +862,7 @@ const RecordManagement: React.FC<{
                     {formatDateTime(e.endTime)}
                   </td>
                   <td className="px-4 py-3 font-mono text-indigo-600 font-bold text-xs">
-                    {isActive ? <span className="animate-pulse">计时中...</span> : `${e.duration}m`}
+                    {isActive ? <span className="animate-pulse">计时中...</span> : formatDurationDisplay(e.duration)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => setEditingEntry(e)} className="text-indigo-600 hover:text-indigo-800 font-medium text-xs">编辑</button>
@@ -1015,7 +1015,6 @@ const ReportGeneration: React.FC<{
       const timeRange = `${formatDateTime(e.startTime)} - ${formatDateTime(e.endTime)}`;
       
       // 分组 Key: 案件ID + 类型 + 内容 + 注释 + 日期
-      // Defensive string conversion for workContent and notes to prevent issues if data is somehow missing
       const contentStr = e.workContent || '';
       const notesStr = e.notes || '';
       const key = `${e.caseId}|${e.workType}|${contentStr}|${notesStr}|${dateStr}`;
@@ -1100,7 +1099,7 @@ const ReportGeneration: React.FC<{
             {stats.map(s => (
               <div key={s.caseId} className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
                 <p className="text-[10px] text-indigo-400 font-bold uppercase truncate" title={s.case}>{s.case}</p>
-                <p className="text-xl font-black text-indigo-700">{s.total}m</p>
+                <p className="text-xl font-black text-indigo-700">{formatDurationDisplay(s.total)}</p>
               </div>
             ))}
           </div>
@@ -1129,7 +1128,7 @@ const ReportGeneration: React.FC<{
                     {formatDateTime(e.startTime)}<br/>
                     {formatDateTime(e.endTime)}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">{e.duration}m</td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-indigo-600">{formatDurationDisplay(e.duration)}</td>
                   <td className="px-4 py-3 text-gray-500 italic truncate" title={e.notes || '无注释'}>{e.notes || '-'}</td>
                 </tr>
               );

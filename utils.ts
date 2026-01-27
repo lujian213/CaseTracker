@@ -30,6 +30,13 @@ export const calculateDuration = (start: number, end: number | null): number => 
   return Math.max(1, Math.round((endTime - startTime) / 60000));
 };
 
+export const formatDurationDisplay = (minutes: number): string => {
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h${m}m`;
+};
+
 export const downloadJson = (data: any, fileName: string) => {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
