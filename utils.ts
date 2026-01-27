@@ -1,3 +1,4 @@
+
 export const generateId = (prefix: string = ''): string => {
   return `${prefix}${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 };
@@ -42,7 +43,11 @@ export const downloadJson = (data: any, fileName: string) => {
 export const downloadCsv = (headers: string[], rows: string[][], fileName: string) => {
   const csvContent = [
     headers.join(','),
-    ...rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','))
+    ...rows.map(row => row.map(cell => {
+      // Ensure cell is a string to prevent "TypeError: Cannot read properties of undefined (reading 'replace')"
+      const safeValue = (cell === undefined || cell === null) ? '' : String(cell);
+      return `"${safeValue.replace(/"/g, '""')}"`;
+    }).join(','))
   ].join('\n');
   
   // Add BOM for UTF-8 Excel support

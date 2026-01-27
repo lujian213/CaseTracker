@@ -55,7 +55,7 @@ const EditableSelect: React.FC<{
         </button>
       </div>
       {isOpen && (
-        <div className="absolute z-[110] left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden max-h-48 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="absolute z-[300] left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden max-h-48 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
           {options.map((opt) => (
             <button
               key={opt}
@@ -92,7 +92,7 @@ const ConfirmDialog: React.FC<{
 }> = ({ isOpen, title, message, onConfirm, onCancel, confirmText = "确认", isDestructive = false }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[500] p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs overflow-hidden animate-in fade-in zoom-in duration-200 border border-gray-100">
         <div className="p-5">
           <h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3>
@@ -265,7 +265,6 @@ const Dashboard: React.FC<{
                   caseItem={c} 
                   workTypes={workTypes}
                   onStart={onStart} 
-                  onStop={onStop}
                   isActive={activeEntry?.caseId === c.id}
                 />
               ))}
@@ -289,9 +288,8 @@ const CaseRow: React.FC<{
   caseItem: Case;
   workTypes: string[];
   onStart: (id: string, type: string, content: string, notes: string) => void;
-  onStop: () => void;
   isActive: boolean;
-}> = ({ caseItem, workTypes, onStart, onStop, isActive }) => {
+}> = ({ caseItem, workTypes, onStart, isActive }) => {
   const [workType, setWorkType] = useState<string>(workTypes[0] || '会议');
   const [workContent, setWorkContent] = useState('');
   const [notes, setNotes] = useState('');
@@ -340,15 +338,17 @@ const CaseRow: React.FC<{
           onChange={(e) => setNotes(e.target.value)}
           className="border border-gray-300 rounded px-3 py-1 text-sm flex-grow md:w-40 focus:ring-2 focus:ring-indigo-200 outline-none"
         />
-        {isActive ? (
-          <button onClick={onStop} className="flex items-center gap-1 bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded text-sm font-bold shadow transition-colors">
-            <Icons.Stop /> 停止计时
-          </button>
-        ) : (
-          <button onClick={() => onStart(caseItem.id, workType, workContent, notes)} className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-sm font-bold shadow transition-colors">
-            <Icons.Play /> 开始计时
-          </button>
-        )}
+        <button 
+          onClick={() => onStart(caseItem.id, workType, workContent, notes)} 
+          disabled={isActive}
+          className={`flex items-center gap-1 px-4 py-1.5 rounded text-sm font-bold shadow transition-all ${
+            isActive 
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+              : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'
+          }`}
+        >
+          {isActive ? '计时中...' : <><Icons.Play /> 开始计时</>}
+        </button>
       </div>
     </div>
   );
@@ -477,7 +477,7 @@ const CaseManagement: React.FC<{
       </div>
       {(editingCase || isAdding) && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md overflow-visible">
             <h4 className="text-lg font-bold mb-4">{isAdding ? '创建新案件' : '编辑案件'}</h4>
             <div className="space-y-4">
               <div>
@@ -879,7 +879,7 @@ const RecordManagement: React.FC<{
       </div>
       {editingEntry && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md overflow-visible">
             <h4 className="text-lg font-bold mb-4">编辑计时记录</h4>
             <div className="space-y-4">
               <div>
@@ -892,7 +892,7 @@ const RecordManagement: React.FC<{
                   {cases.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div>
+              <div className="overflow-visible">
                 <label className="block text-xs font-bold text-gray-500 mb-1">工作类型</label>
                 <EditableSelect 
                   value={editingEntry.workType} 
@@ -996,22 +996,69 @@ const ReportGeneration: React.FC<{
   }, [filtered, cases]);
 
   const handleExportCsv = () => {
-    // 已更新：CSV 表头增加“工作内容”，位置在注释之后
-    const headers = ['案件', '工作类型', '注释', '工作内容', '开始', '结束', '时长(m)'];
-    const rows = filtered.map(e => [
-      cases.find(c => c.id === e.caseId)?.name || '未知',
-      e.workType, 
-      e.notes,
-      e.workContent || '',
-      formatDateTime(e.startTime), 
-      formatDateTime(e.endTime), 
-      e.duration.toString()
-    ]);
-    rows.push(['', '', '', '', '', '', '']);
-    stats.forEach(s => {
-      rows.push([s.case, '总计', '', '', '', '', s.total.toString()]);
+    const headers = ['案件', '工作类型', '工作内容', '注释', '起止时间', '时长(m)'];
+    
+    // 分组逻辑
+    const groupedMap = new Map<string, {
+      caseName: string;
+      workType: string;
+      workContent: string;
+      notes: string;
+      timeRanges: string[];
+      totalDuration: number;
+      startTime: number; // 用于最终排序
+    }>();
+
+    filtered.forEach(e => {
+      const dateStr = formatDate(e.startTime);
+      const caseName = cases.find(c => c.id === e.caseId)?.name || '未知';
+      const timeRange = `${formatDateTime(e.startTime)} - ${formatDateTime(e.endTime)}`;
+      
+      // 分组 Key: 案件ID + 类型 + 内容 + 注释 + 日期
+      // Defensive string conversion for workContent and notes to prevent issues if data is somehow missing
+      const contentStr = e.workContent || '';
+      const notesStr = e.notes || '';
+      const key = `${e.caseId}|${e.workType}|${contentStr}|${notesStr}|${dateStr}`;
+      
+      if (groupedMap.has(key)) {
+        const existing = groupedMap.get(key)!;
+        existing.timeRanges.push(timeRange);
+        existing.totalDuration += e.duration;
+        // 保持最晚的开始时间用于分组间的排序
+        if (e.startTime > existing.startTime) existing.startTime = e.startTime;
+      } else {
+        groupedMap.set(key, {
+          caseName,
+          workType: e.workType,
+          workContent: contentStr,
+          notes: notesStr,
+          timeRanges: [timeRange],
+          totalDuration: e.duration,
+          startTime: e.startTime
+        });
+      }
     });
-    downloadCsv(headers, rows, `Report_${startDate}_${endDate}.csv`);
+
+    // 转换回 Array 并按时间倒序排列
+    const aggregatedData = Array.from(groupedMap.values())
+      .sort((a, b) => b.startTime - a.startTime);
+
+    const rows = aggregatedData.map(group => [
+      group.caseName,
+      group.workType,
+      group.workContent,
+      group.notes,
+      group.timeRanges.join('\n'), // 回车分割
+      group.totalDuration.toString()
+    ]);
+
+    // 底部统计信息
+    rows.push(['', '', '', '', '', '']);
+    stats.forEach(s => {
+      rows.push([s.case, '总计', '', '', '', s.total.toString()]);
+    });
+
+    downloadCsv(headers, rows, `Report_Aggregated_${startDate}_${endDate}.csv`);
   };
 
   return (
