@@ -26,3 +26,6 @@ yarn-error.log*
 
 # Typescript
 *.tsbuildinfo
+
+# github pipeline
+.github/workflows/
