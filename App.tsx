@@ -12,8 +12,6 @@ type AdminTab = 'cases' | 'worktypes' | 'records' | 'reports' | 'system';
 type SortField = 'case' | 'type' | 'time' | 'duration';
 type SortOrder = 'asc' | 'desc';
 
-// --- 组件部分维持原样，仅在关键导出位置和手动添加处进行逻辑修改 ---
-
 const EditableSelect: React.FC<{
   value: string;
   onChange: (val: string) => void;
@@ -212,7 +210,6 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
     return result;
   }, [entries, selectedCaseId, sortField, sortOrder, cases]);
 
-  // --- 核心逻辑修改：手动添加 10 分钟默认值 ---
   const handleAddManual = () => {
     if (openCases.length === 0) { window.alert("请先创建并打开一个案件。"); return; }
     const now = Date.now();
@@ -250,12 +247,12 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
     return Array.from(m.entries()).map(([id, total]) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total }));
   }, [filtered, cases]);
 
-  // --- 核心逻辑修改：Excel 与 CSV 的换行符处理 ---
   const prepareData = (newLineChar: string) => {
     const map = new Map<string, any>();
     filtered.forEach(e => {
       const caseName = cases.find(c=>c.id===e.caseId)?.name || '未知';
-      const key = `${e.caseId}|${e.workType}|${e.workContent}|${formatDate(e.startTime)}`;
+      // Added notes to the grouping key to ensure distinct records are handled separately if needed
+      const key = `${e.caseId}|${e.workType}|${e.workContent}|${e.notes}|${formatDate(e.startTime)}`;
       const timeRange = `${formatDateTime(e.startTime)} - ${formatDateTime(e.endTime)}`;
       if(map.has(key)) {
         const obj = map.get(key); obj.ranges.push(timeRange); obj.duration += e.duration;

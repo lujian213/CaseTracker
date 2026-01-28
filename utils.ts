@@ -1,5 +1,6 @@
 
-import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
+// @ts-ignore
+import * as XLSX from 'xlsx';
 
 export const generateId = (prefix: string = ''): string => {
   return `${prefix}${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
@@ -54,7 +55,6 @@ export const downloadCsv = (headers: string[], rows: string[][], fileName: strin
     headers.join(','),
     ...rows.map(row => row.map(cell => {
       const safeValue = (cell === undefined || cell === null) ? '' : String(cell);
-      // CSV 使用 \n 换行
       return `"${safeValue.replace(/"/g, '""')}"`;
     }).join(','))
   ].join('\n');
@@ -74,14 +74,14 @@ export const downloadXlsx = (headers: string[], rows: string[][], fileName: stri
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Chronos_Report");
 
-  // 设置列宽以便阅读多行内容
+  // Set column widths for better multi-line viewing
   worksheet['!cols'] = [
-    { wch: 25 }, // 案件
-    { wch: 12 }, // 类型
-    { wch: 30 }, // 内容
-    { wch: 30 }, // 注释
-    { wch: 45 }, // 起止时间 (含有换行的重点列)
-    { wch: 12 }, // 时长
+    { wch: 25 }, // Case
+    { wch: 12 }, // Type
+    { wch: 30 }, // Content
+    { wch: 30 }, // Notes
+    { wch: 45 }, // Time Ranges (Multi-line)
+    { wch: 12 }, // Duration
   ];
 
   XLSX.writeFile(workbook, fileName);
