@@ -1,4 +1,6 @@
 
+import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
+
 export const generateId = (prefix: string = ''): string => {
   return `${prefix}${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 };
@@ -51,13 +53,12 @@ export const downloadCsv = (headers: string[], rows: string[][], fileName: strin
   const csvContent = [
     headers.join(','),
     ...rows.map(row => row.map(cell => {
-      // Ensure cell is a string to prevent "TypeError: Cannot read properties of undefined (reading 'replace')"
       const safeValue = (cell === undefined || cell === null) ? '' : String(cell);
+      // CSV 使用 \n 换行
       return `"${safeValue.replace(/"/g, '""')}"`;
     }).join(','))
   ].join('\n');
-  
-  // Add BOM for UTF-8 Excel support
+
   const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -65,4 +66,23 @@ export const downloadCsv = (headers: string[], rows: string[][], fileName: strin
   a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
+};
+
+export const downloadXlsx = (headers: string[], rows: string[][], fileName: string) => {
+  const data = [headers, ...rows];
+  const worksheet = XLSX.utils.aoa_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Chronos_Report");
+
+  // 设置列宽以便阅读多行内容
+  worksheet['!cols'] = [
+    { wch: 25 }, // 案件
+    { wch: 12 }, // 类型
+    { wch: 30 }, // 内容
+    { wch: 30 }, // 注释
+    { wch: 45 }, // 起止时间 (含有换行的重点列)
+    { wch: 12 }, // 时长
+  ];
+
+  XLSX.writeFile(workbook, fileName);
 };
