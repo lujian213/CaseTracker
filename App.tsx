@@ -131,7 +131,13 @@ const CaseRow: React.FC<{ caseItem: Case; workTypes: string[]; onStart: (id: str
   useEffect(() => { if (!workTypes.includes(workType) && workTypes.length > 0) setWorkType(workTypes[0]); }, [workTypes, workType]);
   return (
     <div className={`p-4 transition-colors flex flex-col md:flex-row md:items-center gap-4 first:rounded-t-xl last:rounded-b-xl ${isActive ? 'bg-indigo-50 border-l-4 border-indigo-500' : 'hover:bg-gray-50'}`}>
-      <div className="flex-grow group relative"><h3 className="font-semibold text-gray-800 flex items-center gap-2">{caseItem.name} <Icons.ChevronRight className="opacity-0 group-hover:opacity-30 w-3 h-3" /></h3><p className="text-xs text-gray-500 font-mono">{caseItem.code}</p></div>
+      <div className="flex-grow group relative">
+        <h3 className="font-semibold text-gray-800 flex items-center gap-2" title={caseItem.description || caseItem.name}>
+          {caseItem.name}
+          <Icons.ChevronRight className="opacity-0 group-hover:opacity-30 w-3 h-3" />
+        </h3>
+        <p className="text-xs text-gray-500 font-mono">{caseItem.code}</p>
+      </div>
       <div className="flex flex-wrap items-center gap-3">
         <EditableSelect value={workType} onChange={setWorkType} options={workTypes} className="w-full md:w-32" placeholder="类型" />
         <input type="text" placeholder="工作内容" value={workContent} onChange={(e) => setWorkContent(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm md:w-28 focus:ring-2 focus:ring-indigo-200 outline-none" />
@@ -170,7 +176,13 @@ const CaseManagement: React.FC<{ cases: Case[]; setCases: any; setEntries: any; 
       <div className="grid gap-4 overflow-y-auto pr-2 pb-4">
         {cases.map(c => (
           <div key={c.id} className="border border-gray-200 rounded-xl p-4 flex justify-between bg-white hover:border-indigo-200">
-            <div><div className="flex items-center gap-3 mb-1"><span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">{c.code}</span><span className={`text-xs px-2 py-0.5 rounded-full ${c.isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{c.isOpen ? '打开' : '关闭'}</span></div><h4 className="font-bold text-gray-800">{c.name}</h4></div>
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">{c.code}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${c.isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{c.isOpen ? '打开' : '关闭'}</span>
+              </div>
+              <h4 className="font-bold text-gray-800" title={c.description || c.name}>{c.name}</h4>
+            </div>
             <div className="flex gap-2"><button onClick={() => setEditingCase(c)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"><Icons.Edit /></button><button onClick={() => showConfirm({ title: "删除案件", message: "确定要删除吗？计时记录也将删除。", isDestructive: true, confirmText: "删除", onConfirm: () => { setCases((prev:Case[]) => prev.filter(item => item.id !== c.id)); setEntries((prev:any[]) => prev.filter(e => e.caseId !== c.id)); } })} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Icons.Trash /></button></div>
           </div>
         ))}
@@ -223,7 +235,37 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex justify-between items-center mb-6 shrink-0"><div className="flex gap-3"><select value={selectedCaseId} onChange={(e) => setSelectedCaseId(e.target.value)} className="border rounded px-4 py-2 bg-white text-sm"><option value="">所有记录</option>{cases.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><button onClick={handleAddManual} className="flex items-center gap-1 text-indigo-600 border border-indigo-600 px-3 py-1.5 rounded-lg font-bold text-xs"><Icons.Plus /> 手动添加</button></div>{batchSelection.length > 0 && <button onClick={() => showConfirm({ title:"删除", message:`删除选中的 ${batchSelection.length} 条？`, isDestructive:true, onConfirm:()=> { setEntries((p:any)=>p.filter((e:any)=>!batchSelection.includes(e.id))); setBatchSelection([]); } })} className="bg-red-50 text-red-600 border border-red-500 px-4 py-1.5 rounded-lg text-xs font-black shadow-sm">删除选中</button>}</div>
-      <div className="flex-grow border border-gray-100 rounded-xl bg-white overflow-y-auto"><table className="w-full text-left text-sm table-fixed"><thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold sticky top-0"><tr><th className="px-4 py-3 w-10"><input type="checkbox" onChange={e => setBatchSelection(e.target.checked ? sortedEntries.filter(i=>i.endTime!==null).map(i=>i.id) : [])} checked={batchSelection.length > 0 && batchSelection.length === sortedEntries.filter(i=>i.endTime!==null).length} /></th><th className="px-4 py-3 w-[20%]">案件</th><th className="px-4 py-3 w-[110px]">类型</th><th className="px-4 py-3 w-[130px]">时间</th><th className="px-4 py-3 w-[70px]">时长</th><th className="px-4 py-3 w-[60px]">操作</th></tr></thead><tbody className="divide-y divide-gray-100">{sortedEntries.map(e => (<tr key={e.id} className="hover:bg-gray-50"><td className="px-4 py-3"><input type="checkbox" disabled={e.endTime===null} checked={batchSelection.includes(e.id)} onChange={()=>setBatchSelection(p=>p.includes(e.id)?p.filter(i=>i!==e.id):[...p,e.id])} /></td><td className="px-4 py-3 font-medium truncate">{cases.find(i=>i.id===e.caseId)?.name}</td><td className="px-4 py-3 truncate">{e.workType}</td><td className="px-4 py-3 text-[10px] text-gray-500 font-mono">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td><td className="px-4 py-3 font-bold text-indigo-600">{e.endTime===null?'计时中...':formatDurationDisplay(e.duration)}</td><td className="px-4 py-3"><button onClick={()=>{setIsNewRecord(false);setEditingEntry(e)}} className="text-indigo-600 text-xs">编辑</button></td></tr>))}</tbody></table></div>
+      <div className="flex-grow border border-gray-100 rounded-xl bg-white overflow-y-auto">
+        <table className="w-full text-left text-sm table-fixed">
+          <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold sticky top-0">
+            <tr>
+              <th className="px-4 py-3 w-10"><input type="checkbox" onChange={e => setBatchSelection(e.target.checked ? sortedEntries.filter(i=>i.endTime!==null).map(i=>i.id) : [])} checked={batchSelection.length > 0 && batchSelection.length === sortedEntries.filter(i=>i.endTime!==null).length} /></th>
+              <th className="px-4 py-3 w-[20%]">案件</th>
+              <th className="px-4 py-3 w-[110px]">类型</th>
+              <th className="px-4 py-3 w-[130px]">时间</th>
+              <th className="px-4 py-3 w-[70px]">时长</th>
+              <th className="px-4 py-3 w-[60px]">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {sortedEntries.map(e => {
+              const c = cases.find(i => i.id === e.caseId);
+              return (
+                <tr key={e.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3"><input type="checkbox" disabled={e.endTime===null} checked={batchSelection.includes(e.id)} onChange={()=>setBatchSelection(p=>p.includes(e.id)?p.filter(i=>i!==e.id):[...p,e.id])} /></td>
+                  <td className="px-4 py-3 font-medium truncate" title={c ? (c.description || c.name) : ''}>
+                    {c?.name}
+                  </td>
+                  <td className="px-4 py-3 truncate">{e.workType}</td>
+                  <td className="px-4 py-3 text-[10px] text-gray-500 font-mono">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
+                  <td className="px-4 py-3 font-bold text-indigo-600">{e.endTime===null?'计时中...':formatDurationDisplay(e.duration)}</td>
+                  <td className="px-4 py-3"><button onClick={()=>{setIsNewRecord(false);setEditingEntry(e)}} className="text-indigo-600 text-xs">编辑</button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       {editingEntry && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4"><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md"><h4 className="text-lg font-bold mb-4">{isNewRecord ? '添加' : '编辑'}</h4><div className="space-y-4"><div><label className="text-xs font-bold text-gray-500">案件</label><select value={editingEntry.caseId} disabled={!isNewRecord} onChange={e=>setEditingEntry({...editingEntry, caseId: e.target.value})} className="w-full border p-2 rounded">{ (isNewRecord ? openCases : cases).map(c=><option key={c.id} value={c.id}>{c.name}</option>) }</select></div><EditableSelect value={editingEntry.workType} onChange={v=>setEditingEntry({...editingEntry, workType: v})} options={workTypes} placeholder="工作类型" /><input placeholder="工作内容" value={editingEntry.workContent} onChange={e=>setEditingEntry({...editingEntry, workContent: e.target.value})} className="w-full border p-2 rounded text-sm" /><div className="grid grid-cols-2 gap-4"><div><label className="text-xs">开始</label><input type="datetime-local" value={safeToISO(editingEntry.startTime)} onChange={e => { const ts = new Date(e.target.value).getTime(); if(ts) setEditingEntry({...editingEntry, startTime: ts, duration: calculateDuration(ts, editingEntry.endTime)})}} className="w-full border p-1 text-xs" /></div><div><label className="text-xs">结束</label><input type="datetime-local" value={safeToISO(editingEntry.endTime)} onChange={e => { const ts = new Date(e.target.value).getTime(); if(ts) setEditingEntry({...editingEntry, endTime: ts, duration: calculateDuration(editingEntry.startTime, ts)})}} className="w-full border p-1 text-xs" /></div></div></div><div className="flex justify-end gap-3 mt-8"><button onClick={()=>setEditingEntry(null)} className="px-4 py-2 text-gray-400">取消</button><button onClick={()=>{ setEntries((prev:any)=>prev.map((i:any)=>i.id===editingEntry.id?editingEntry:i)); setEditingEntry(null); }} className="px-6 py-2 bg-indigo-600 text-white rounded font-bold">保存</button></div></div></div>
       )}
@@ -251,7 +293,6 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
     const map = new Map<string, any>();
     filtered.forEach(e => {
       const caseName = cases.find(c=>c.id===e.caseId)?.name || '未知';
-      // Use newline char \n which XLSX library handles for internal line breaks
       const key = `${e.caseId}|${e.workType}|${e.workContent}|${e.notes}|${formatDate(e.startTime)}`;
       const timeRange = `${formatDateTime(e.startTime)} - ${formatDateTime(e.endTime)}`;
       if(map.has(key)) {
@@ -269,7 +310,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
       o.workType,
       o.workContent,
       o.notes,
-      o.ranges.join('\n'), // Use \n for both CSV and XLSX (standard for SheetJS)
+      o.ranges.join('\n'),
       o.duration.toString()
     ]);
     const summaryRows = stats.map(s => [s.name, '总计', '', '', '', s.total.toString()]);
@@ -298,8 +339,46 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
           <button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold">Excel (XLSX)</button>
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-4 shrink-0">{stats.map(s=>(<div key={s.id} className="bg-indigo-50 p-3 rounded-xl border border-indigo-100"><p className="text-[9px] text-indigo-400 font-bold truncate">{s.name}</p><p className="text-lg font-black text-indigo-700">{formatDurationDisplay(s.total)}</p></div>))}</div>
-      <div className="border border-gray-100 rounded-xl bg-white flex-grow min-h-0 overflow-y-auto"><table className="w-full text-left text-xs table-fixed"><thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[9px] sticky top-0"><tr><th className="px-4 py-3 w-[25%]">案件</th><th className="px-4 py-3 w-[100px]">类型</th><th className="px-4 py-3 w-[130px]">时间</th><th className="px-4 py-3 w-[70px] text-right">时长</th><th className="px-4 py-3">内容</th></tr></thead><tbody className="divide-y divide-gray-50">{filtered.map(e=>(<tr key={e.id} className="hover:bg-gray-50"><td className="px-4 py-3 truncate font-semibold">{cases.find(i=>i.id===e.caseId)?.name}</td><td className="px-4 py-3 truncate">{e.workType}</td><td className="px-4 py-3 text-gray-500 font-mono text-[9px]">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td><td className="px-4 py-3 text-right font-bold text-indigo-600">{formatDurationDisplay(e.duration)}</td><td className="px-4 py-3 truncate text-gray-400">{e.workContent}</td></tr>))}</tbody></table></div>
+      <div className="grid grid-cols-4 gap-4 shrink-0">
+        {stats.map(s => {
+          const c = cases.find(item => item.id === s.id);
+          return (
+            <div key={s.id} className="bg-indigo-50 p-3 rounded-xl border border-indigo-100" title={c ? (c.description || c.name) : s.name}>
+              <p className="text-[9px] text-indigo-400 font-bold truncate">{s.name}</p>
+              <p className="text-lg font-black text-indigo-700">{formatDurationDisplay(s.total)}</p>
+            </div>
+          );
+        })}
+      </div>
+      <div className="border border-gray-100 rounded-xl bg-white flex-grow min-h-0 overflow-y-auto">
+        <table className="w-full text-left text-xs table-fixed">
+          <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[9px] sticky top-0">
+            <tr>
+              <th className="px-4 py-3 w-[25%]">案件</th>
+              <th className="px-4 py-3 w-[100px]">类型</th>
+              <th className="px-4 py-3 w-[130px]">时间</th>
+              <th className="px-4 py-3 w-[70px] text-right">时长</th>
+              <th className="px-4 py-3">内容</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {filtered.map(e => {
+              const c = cases.find(i => i.id === e.caseId);
+              return (
+                <tr key={e.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 truncate font-semibold" title={c ? (c.description || c.name) : '未知'}>
+                    {c?.name}
+                  </td>
+                  <td className="px-4 py-3 truncate">{e.workType}</td>
+                  <td className="px-4 py-3 text-gray-500 font-mono text-[9px]">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
+                  <td className="px-4 py-3 text-right font-bold text-indigo-600">{formatDurationDisplay(e.duration)}</td>
+                  <td className="px-4 py-3 truncate text-gray-400">{e.workContent}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
