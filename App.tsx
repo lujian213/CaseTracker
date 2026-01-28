@@ -658,10 +658,13 @@ const RecordManagement: React.FC<{
 }> = ({ cases, entries, workTypes, setEntries, showConfirm }) => {
   const [selectedCaseId, setSelectedCaseId] = useState<string>('');
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+  const [isNewRecord, setIsNewRecord] = useState(false);
   const [batchSelection, setBatchSelection] = useState<string[]>([]);
-  
+
   const [sortField, setSortField] = useState<SortField>('time');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+
+  const openCases = useMemo(() => cases.filter(c => c.isOpen), [cases]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -721,14 +724,19 @@ const RecordManagement: React.FC<{
   };
 
   const handleAddManual = () => {
-    if (cases.length === 0) {
-      window.alert("请先创建至少一个案件。");
+    if (openCases.length === 0) {
+      window.alert("没有处于打开状态的案件，请先前往案件管理打开或创建一个案件。");
       return;
     }
-    const targetCaseId = selectedCaseId || cases[0].id;
+    const targetCaseId = (selectedCaseId && openCases.find(c => c.id === selectedCaseId))
+      ? selectedCaseId
+      : openCases[0].id;
+
+    // --- 核心修改：默认时间逻辑 ---
     const now = Date.now();
-    const startTime = now;
-    const endTime = now + 1800000;
+    const startTime = now - (10 * 60 * 1000); // 结束时间为现在，开始时间为10分钟前
+    const endTime = now;
+
     const newEntry: TimeEntry = {
       id: generateId('REC-'),
       caseId: targetCaseId,
@@ -737,9 +745,10 @@ const RecordManagement: React.FC<{
       notes: '',
       startTime: startTime,
       endTime: endTime,
-      duration: 30
+      duration: 10 // 默认 10 分钟
     };
     setEntries(prev => [newEntry, ...prev]);
+    setIsNewRecord(true);
     setEditingEntry(newEntry);
   };
 
@@ -761,6 +770,7 @@ const RecordManagement: React.FC<{
     }
     setEntries(prev => prev.map(item => item.id === editingEntry.id ? editingEntry : item));
     setEditingEntry(null);
+    setIsNewRecord(false);
   };
 
   const SortIndicator = ({ field }: { field: SortField }) => {
@@ -783,15 +793,15 @@ const RecordManagement: React.FC<{
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex flex-wrap justify-between items-center gap-4 mb-6 shrink-0">
         <div className="flex items-center gap-3">
-          <select 
-            value={selectedCaseId} 
-            onChange={(e) => setSelectedCaseId(e.target.value)} 
+          <select
+            value={selectedCaseId}
+            onChange={(e) => setSelectedCaseId(e.target.value)}
             className="border border-gray-300 rounded px-4 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-200 text-sm"
           >
             <option value="">所有案件记录</option>
             {cases.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <button 
+          <button
             type="button"
             onClick={handleAddManual}
             className="flex items-center gap-1 text-indigo-600 border border-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors font-bold text-xs"
@@ -800,9 +810,9 @@ const RecordManagement: React.FC<{
           </button>
         </div>
         {batchSelection.length > 0 && (
-          <button 
+          <button
             type="button"
-            onClick={deleteSelected} 
+            onClick={deleteSelected}
             className="bg-red-50 text-red-600 border border-red-500 px-4 py-1.5 rounded-lg hover:bg-red-100 flex items-center gap-2 transition-all font-black shadow-sm text-xs"
           >
             <Icons.Trash /> 删除选中 ({batchSelection.length})
@@ -814,9 +824,9 @@ const RecordManagement: React.FC<{
           <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 w-10">
-                <input 
-                  type="checkbox" 
-                  onChange={(e) => setBatchSelection(e.target.checked ? selectableEntries.map(e => e.id) : [])} 
+                <input
+                  type="checkbox"
+                  onChange={(e) => setBatchSelection(e.target.checked ? selectableEntries.map(e => e.id) : [])}
                   checked={selectableEntries.length > 0 && batchSelection.length === selectableEntries.length}
                 />
               </th>
@@ -843,11 +853,11 @@ const RecordManagement: React.FC<{
               return (
                 <tr key={e.id} className={`hover:bg-gray-50 transition-colors ${isActive ? 'bg-indigo-50/30' : ''}`}>
                   <td className="px-4 py-3">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       disabled={isActive}
-                      checked={batchSelection.includes(e.id)} 
-                      onChange={() => toggleSelection(e.id)} 
+                      checked={batchSelection.includes(e.id)}
+                      onChange={() => toggleSelection(e.id)}
                       className={isActive ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
                     />
                   </td>
@@ -865,7 +875,7 @@ const RecordManagement: React.FC<{
                     {isActive ? <span className="animate-pulse">计时中...</span> : formatDurationDisplay(e.duration)}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => setEditingEntry(e)} className="text-indigo-600 hover:text-indigo-800 font-medium text-xs">编辑</button>
+                    <button onClick={() => { setIsNewRecord(false); setEditingEntry(e); }} className="text-indigo-600 hover:text-indigo-800 font-medium text-xs">编辑</button>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 italic truncate" title={e.notes || '无注释'}>
                     {e.notes || '-'}
@@ -880,23 +890,26 @@ const RecordManagement: React.FC<{
       {editingEntry && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md overflow-visible">
-            <h4 className="text-lg font-bold mb-4">编辑计时记录</h4>
+            <h4 className="text-lg font-bold mb-4">{isNewRecord ? '添加计时记录' : '编辑计时记录'}</h4>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">所属案件</label>
-                <select 
-                  value={editingEntry.caseId} 
-                  onChange={(e) => setEditingEntry({...editingEntry, caseId: e.target.value})} 
-                  className="w-full border border-gray-300 rounded p-2 outline-none"
+                <label className="block text-xs font-bold text-gray-500 mb-1">所属案件 {!isNewRecord && '(编辑模式下不可修改)'}</label>
+                <select
+                  value={editingEntry.caseId}
+                  disabled={!isNewRecord}
+                  onChange={(e) => setEditingEntry({...editingEntry, caseId: e.target.value})}
+                  className={`w-full border border-gray-300 rounded p-2 outline-none ${!isNewRecord ? 'bg-gray-100 cursor-not-allowed opacity-75' : 'bg-white'}`}
                 >
-                  {cases.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {(isNewRecord ? openCases : cases).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
                 </select>
               </div>
               <div className="overflow-visible">
                 <label className="block text-xs font-bold text-gray-500 mb-1">工作类型</label>
-                <EditableSelect 
-                  value={editingEntry.workType} 
-                  onChange={(val) => setEditingEntry({...editingEntry, workType: val})} 
+                <EditableSelect
+                  value={editingEntry.workType}
+                  onChange={(val) => setEditingEntry({...editingEntry, workType: val})}
                   options={workTypes}
                   placeholder="选择或输入工作类型"
                   className="w-full"
@@ -904,12 +917,12 @@ const RecordManagement: React.FC<{
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">工作内容</label>
-                <input 
-                  type="text" 
-                  value={editingEntry.workContent || ''} 
-                  onChange={(e) => setEditingEntry({...editingEntry, workContent: e.target.value})} 
+                <input
+                  type="text"
+                  value={editingEntry.workContent || ''}
+                  onChange={(e) => setEditingEntry({...editingEntry, workContent: e.target.value})}
                   placeholder="输入工作内容"
-                  className="w-full border border-gray-300 rounded p-2 outline-none focus:ring-2 focus:ring-indigo-200" 
+                  className="w-full border border-gray-300 rounded p-2 outline-none focus:ring-2 focus:ring-indigo-200"
                 />
               </div>
               <div>
@@ -936,8 +949,8 @@ const RecordManagement: React.FC<{
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-8">
-              <button onClick={() => setEditingEntry(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">取消</button>
-              <button onClick={handleSaveEdit} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow font-bold">保存修改</button>
+              <button onClick={() => { setEditingEntry(null); setIsNewRecord(false); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">取消</button>
+              <button onClick={handleSaveEdit} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow font-bold">保存</button>
             </div>
           </div>
         </div>
@@ -981,8 +994,8 @@ const ReportGeneration: React.FC<{
   }, [availableCases]);
 
   const filtered = useMemo(() => {
-    const data = selectedCaseIds.length === 0 
-      ? entriesInRange 
+    const data = selectedCaseIds.length === 0
+      ? entriesInRange
       : entriesInRange.filter(e => selectedCaseIds.includes(e.caseId));
     return [...data].sort((a, b) => b.startTime - a.startTime);
   }, [entriesInRange, selectedCaseIds]);
@@ -992,12 +1005,12 @@ const ReportGeneration: React.FC<{
     filtered.forEach(e => { map.set(e.caseId, (map.get(e.caseId) || 0) + e.duration); });
     return Array.from(map.entries())
       .map(([id, total]) => ({ caseId: id, case: cases.find(c => c.id === id)?.name || '未知', total }))
-      .sort((a, b) => a.case.localeCompare(b.case)); 
+      .sort((a, b) => a.case.localeCompare(b.case));
   }, [filtered, cases]);
 
   const handleExportCsv = () => {
     const headers = ['案件', '工作类型', '工作内容', '注释', '起止时间', '时长(m)'];
-    
+
     // 分组逻辑
     const groupedMap = new Map<string, {
       caseName: string;
@@ -1013,12 +1026,12 @@ const ReportGeneration: React.FC<{
       const dateStr = formatDate(e.startTime);
       const caseName = cases.find(c => c.id === e.caseId)?.name || '未知';
       const timeRange = `${formatDateTime(e.startTime)} - ${formatDateTime(e.endTime)}`;
-      
+
       // 分组 Key: 案件ID + 类型 + 内容 + 注释 + 日期
       const contentStr = e.workContent || '';
       const notesStr = e.notes || '';
       const key = `${e.caseId}|${e.workType}|${contentStr}|${notesStr}|${dateStr}`;
-      
+
       if (groupedMap.has(key)) {
         const existing = groupedMap.get(key)!;
         existing.timeRanges.push(timeRange);
@@ -1080,7 +1093,7 @@ const ReportGeneration: React.FC<{
                 <p className="text-xs text-gray-400 py-2 italic">该时间段内暂无案件记录</p>
             ) : (
                 availableCases.map(c => (
-                    <button key={c.id} onClick={() => setSelectedCaseIds(prev => prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id])} className={`text-xs px-3 py-1.5 rounded-full border transition-all ${selectedCaseIds.includes(c.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
+                    <button key={c.id} onClick={() => setSelectedCaseIds(prev => prev.includes(c.id) ? prev.filter(caseId => caseId !== c.id) : [...prev, c.id])} className={`text-xs px-3 py-1.5 rounded-full border transition-all ${selectedCaseIds.includes(c.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
                       {c.name}
                     </button>
                   ))
