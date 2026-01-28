@@ -72,16 +72,16 @@ export const downloadXlsx = (headers: string[], rows: string[][], fileName: stri
   const data = [headers, ...rows];
   const worksheet = XLSX.utils.aoa_to_sheet(data);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Chronos_Report");
+  XLSX.utils.book_append_sheet(workbook, worksheet, "时间报表");
 
-  // Set column widths for better multi-line viewing
+  // Set column widths. 40-50 width is good for viewing time ranges.
   worksheet['!cols'] = [
-    { wch: 25 }, // Case
-    { wch: 12 }, // Type
-    { wch: 30 }, // Content
-    { wch: 30 }, // Notes
-    { wch: 45 }, // Time Ranges (Multi-line)
-    { wch: 12 }, // Duration
+    { wch: 25 }, // 案件
+    { wch: 12 }, // 类型
+    { wch: 30 }, // 内容
+    { wch: 30 }, // 注释
+    { wch: 45 }, // 起止时间
+    { wch: 12 }, // 时长
   ];
 
   XLSX.writeFile(workbook, fileName);

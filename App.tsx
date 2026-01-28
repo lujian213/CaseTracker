@@ -247,27 +247,38 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
     return Array.from(m.entries()).map(([id, total]) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total }));
   }, [filtered, cases]);
 
-  const prepareData = (newLineChar: string) => {
+  const prepareData = () => {
     const map = new Map<string, any>();
     filtered.forEach(e => {
       const caseName = cases.find(c=>c.id===e.caseId)?.name || '未知';
-      // Added notes to the grouping key to ensure distinct records are handled separately if needed
+      // Use newline char \n which XLSX library handles for internal line breaks
       const key = `${e.caseId}|${e.workType}|${e.workContent}|${e.notes}|${formatDate(e.startTime)}`;
       const timeRange = `${formatDateTime(e.startTime)} - ${formatDateTime(e.endTime)}`;
       if(map.has(key)) {
-        const obj = map.get(key); obj.ranges.push(timeRange); obj.duration += e.duration;
+        const obj = map.get(key);
+        obj.ranges.push(timeRange);
+        obj.duration += e.duration;
       } else {
-        map.set(key, { caseName, workType: e.workType, workContent: e.workContent, notes: e.notes, ranges: [timeRange], duration: e.duration });
+        map.set(key, { caseName, workType: e.workType, workContent: e.workContent, notes: e.notes, ranges: [timeRange], duration: e.duration, timestamp: e.startTime });
       }
     });
-    const mainRows = Array.from(map.values()).map(o => [o.caseName, o.workType, o.workContent, o.notes, o.ranges.join(newLineChar), o.duration.toString()]);
+
+    const aggregated = Array.from(map.values()).sort((a,b) => b.timestamp - a.timestamp);
+    const mainRows = aggregated.map(o => [
+      o.caseName,
+      o.workType,
+      o.workContent,
+      o.notes,
+      o.ranges.join('\n'), // Use \n for both CSV and XLSX (standard for SheetJS)
+      o.duration.toString()
+    ]);
     const summaryRows = stats.map(s => [s.name, '总计', '', '', '', s.total.toString()]);
     return { mainRows, summaryRows };
   };
 
   const headers = ['案件', '工作类型', '工作内容', '注释', '起止时间', '时长(m)'];
-  const handleCsv = () => { const { mainRows, summaryRows } = prepareData('\n'); downloadCsv(headers, [...mainRows, ['','','','','',''], ...summaryRows], `Report_${startDate}.csv`); };
-  const handleXlsx = () => { const { mainRows, summaryRows } = prepareData('\r\n'); downloadXlsx(headers, [...mainRows, ['','','','','',''], ...summaryRows], `Report_${startDate}.xlsx`); };
+  const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, ['','','','','',''], ...summaryRows], `Report_${startDate}.csv`); };
+  const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, ['','','','','',''], ...summaryRows], `Report_${startDate}.xlsx`); };
 
   return (
     <div className="space-y-6 flex flex-col h-full overflow-hidden">
