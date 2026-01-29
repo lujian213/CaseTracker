@@ -142,7 +142,27 @@ const CaseRow: React.FC<{ caseItem: Case; workTypes: string[]; onStart: (id: str
         <EditableSelect value={workType} onChange={setWorkType} options={workTypes} className="w-full md:w-32" placeholder="类型" />
         <input type="text" placeholder="工作内容" value={workContent} onChange={(e) => setWorkContent(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm md:w-28 focus:ring-2 focus:ring-indigo-200 outline-none" />
         <input type="text" placeholder="注释" value={notes} onChange={(e) => setNotes(e.target.value)} className="border border-gray-300 rounded px-3 py-1 text-sm flex-grow md:w-40" />
-        <button onClick={() => onStart(caseItem.id, workType, workContent, notes)} disabled={isActive} className={`flex items-center gap-1 px-4 py-1.5 rounded text-sm font-bold shadow transition-all ${isActive ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'}`}>{isActive ? '计时中...' : <><Icons.Play /> 开始计时</>}</button>
+        <button
+          onClick={() => onStart(caseItem.id, workType, workContent, notes)}
+          disabled={isActive}
+          title={isActive ? "正在计时" : "开始计时"}
+          className={`flex items-center justify-center gap-2 px-4 py-1.5 rounded text-sm font-bold shadow transition-all min-w-[110px] ${isActive ? 'bg-indigo-50 text-indigo-600 border border-indigo-200 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'}`}
+        >
+          {isActive ? (
+            <div className="flex items-center gap-3 py-0.5">
+              <div className="flex h-2 w-2 relative">
+                <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></div>
+                <div className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></div>
+              </div>
+              <Icons.Clock className="animate-spin text-indigo-500" style={{ animationDuration: '3s' }} />
+            </div>
+          ) : (
+            <>
+              <Icons.Play />
+              开始计时
+            </>
+          )}
+        </button>
       </div>
     </div>
   );
