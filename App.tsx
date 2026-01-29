@@ -165,14 +165,33 @@ const Dashboard: React.FC<{ cases: Case[]; entries: TimeEntry[]; workTypes: stri
 };
 
 const CaseRow: React.FC<{ caseItem: Case; workTypes: string[]; onStart: (id: string, type: string, content: string, notes: string) => void; activeEntry: TimeEntry | null; }> = ({ caseItem, workTypes, onStart, activeEntry }) => {
-  const [workType, setWorkType] = useState<string>(workTypes[0] || '会议');
+  // 核心逻辑：确保初始值和后续默认值变更能同步
+  const [workType, setWorkType] = useState<string>(workTypes[0] || '');
   const [workContent, setWorkContent] = useState('');
   const [notes, setNotes] = useState('');
+
+  // 使用 ref 记录上一次的默认值，以便判断用户是否手动更改过
+  const prevDefaultRef = useRef(workTypes[0]);
 
   const isActive = activeEntry !== null;
   const liveDuration = isActive ? formatLiveDuration(activeEntry.startTime) : '';
 
-  useEffect(() => { if (!workTypes.includes(workType) && workTypes.length > 0) setWorkType(workTypes[0]); }, [workTypes, workType]);
+  useEffect(() => {
+    // 1. 如果当前选中的值无效（例如被删除了），重置为当前默认值
+    if (workTypes.length > 0 && !workTypes.includes(workType)) {
+      setWorkType(workTypes[0]);
+    }
+    // 2. 如果默认值（列表第一项）发生了变化，且用户当前选中的仍是“旧的默认值”，则自动跟随更新到“新的默认值”
+    else if (workTypes.length > 0 && workType === prevDefaultRef.current && workTypes[0] !== prevDefaultRef.current) {
+      setWorkType(workTypes[0]);
+    }
+    // 3. 如果当前为空且列表有值，初始化
+    else if (workTypes.length > 0 && workType === '') {
+      setWorkType(workTypes[0]);
+    }
+
+    prevDefaultRef.current = workTypes[0];
+  }, [workTypes, workType]);
 
   const baseTitle = caseItem.description || caseItem.name;
   const tooltipText = isActive ? `${baseTitle} [当前已计时: ${liveDuration}]` : baseTitle;
@@ -267,8 +286,64 @@ const CaseManagement: React.FC<{ cases: Case[]; setCases: any; setEntries: any; 
 
 const WorkTypeManagement: React.FC<{ workTypes: string[]; setWorkTypes: any; showConfirm: any; }> = ({ workTypes, setWorkTypes, showConfirm }) => {
   const [newType, setNewType] = useState('');
+
+  const moveType = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= workTypes.length) return;
+
+    const updated = [...workTypes];
+    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+    setWorkTypes(updated);
+  };
+
   return (
-    <div className="flex flex-col h-full"><h3 className="text-lg font-bold text-gray-800 mb-6">工作类型管理</h3><div className="flex gap-2 mb-6"><input type="text" placeholder="新类型" value={newType} onChange={(e) => setNewType(e.target.value)} className="flex-grow border border-gray-300 rounded-lg px-4 py-2" /><button onClick={() => { if(newType) setWorkTypes((prev:any)=>[...prev, newType]); setNewType(''); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold shadow">添加</button></div><div className="flex-grow overflow-y-auto">{workTypes.map((type, index) => (<div key={type + index} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl mb-2"><span className="font-medium text-gray-700">{type}</span><button onClick={() => showConfirm({ title:"删除类型", message:`确定删除 ${type} 吗？`, isDestructive: true, onConfirm: () => setWorkTypes((prev:any)=>prev.filter((t:any)=>t!==type)) })} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Icons.Trash /></button></div>))}</div></div>
+    <div className="flex flex-col h-full">
+      <h3 className="text-lg font-bold text-gray-800 mb-6">工作类型管理</h3>
+      <div className="flex gap-2 mb-6">
+        <input type="text" placeholder="新类型" value={newType} onChange={(e) => setNewType(e.target.value)} className="flex-grow border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-200 outline-none transition-shadow" />
+        <button onClick={() => { if(newType) setWorkTypes((prev:any)=>[...prev, newType]); setNewType(''); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-indigo-700 transition-colors">添加</button>
+      </div>
+      <div className="flex-grow overflow-y-auto pr-1">
+        {workTypes.map((type, index) => (
+          <div key={type + index} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl mb-2 group transition-colors hover:bg-white hover:shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400 font-mono w-4">{index + 1}.</span>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-700">{type}</span>
+                {index === 0 && (
+                  <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-bold border border-indigo-200 shadow-sm animate-in fade-in zoom-in-90 duration-300">默认值</span>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={() => moveType(index, 'up')}
+                disabled={index === 0}
+                className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-gray-100 transition-all"
+                title="上移"
+              >
+                <Icons.ArrowUp className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => moveType(index, 'down')}
+                disabled={index === workTypes.length - 1}
+                className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-gray-100 transition-all"
+                title="下移"
+              >
+                <Icons.ArrowDown className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => showConfirm({ title:"删除类型", message:`确定删除 ${type} 吗？`, isDestructive: true, onConfirm: () => setWorkTypes((prev:any)=>prev.filter((_:any, i:any)=>i!==index)) })}
+                className="p-1.5 text-red-400 hover:text-red-600 rounded-lg hover:bg-gray-100 transition-all ml-1"
+                title="删除"
+              >
+                <Icons.Trash className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 };
 
