@@ -440,8 +440,72 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
         <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
       </div>
       <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold">CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold">XLSX</button></div></div>
-      <div className="grid grid-cols-4 gap-4 shrink-0">{stats.map(s => <div key={s.id} className="bg-indigo-50 p-3 rounded-xl border border-indigo-100"><p className="text-[9px] text-indigo-400 font-bold truncate">{s.name}</p><p className="text-lg font-black text-indigo-700">{formatDurationDisplay(s.total)}</p></div>)}</div>
-      <div className="border border-gray-100 rounded-xl bg-white flex-grow overflow-y-auto"><table className="w-full text-left text-xs table-fixed"><thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[9px] sticky top-0"><tr><th className="px-4 py-3 w-[25%]">案件</th><th className="px-4 py-3 w-[100px]">类型</th><th className="px-4 py-3 w-[130px]">时间</th><th className="px-4 py-3 w-[70px] text-right">时长</th><th className="px-4 py-3">内容</th></tr></thead><tbody className="divide-y divide-gray-50">{filtered.map(e => <tr key={e.id} className="hover:bg-gray-50"><td className="px-4 py-3 font-semibold truncate">{cases.find(i=>i.id===e.caseId)?.name}</td><td className="px-4 py-3 truncate">{e.workType}</td><td className="px-4 py-3 text-gray-500 font-mono text-[9px]">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td><td className="px-4 py-3 text-right font-bold text-indigo-600">{formatDurationDisplay(e.duration)}</td><td className="px-4 py-3 truncate text-gray-400">{e.workContent}</td></tr>)}</tbody></table></div>
+      <div className="grid grid-cols-4 gap-4 shrink-0">
+        {stats.map(s => {
+          const c = cases.find(item => item.id === s.id);
+          const activeEntryForCase = entries.find(e => e.caseId === s.id && e.endTime === null);
+          const liveDurationText = activeEntryForCase ? formatLiveDuration(activeEntryForCase.startTime) : '';
+          const tooltipText = (c?.description || c?.name || '未知') + (activeEntryForCase ? ` [当前已计时: ${liveDurationText}]` : '');
+          return (
+            <Tooltip key={s.id} text={tooltipText}>
+              <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 h-full cursor-help">
+                <p className="text-[9px] text-indigo-400 font-bold truncate">{s.name}</p>
+                <div className="flex items-baseline gap-1">
+                  <p className="text-lg font-black text-indigo-700">{formatDurationDisplay(s.total)}</p>
+                  {activeEntryForCase && (
+                    <span className="text-[10px] text-red-500 animate-pulse font-bold">+计</span>
+                  )}
+                </div>
+              </div>
+            </Tooltip>
+          );
+        })}
+      </div>
+      <div className="border border-gray-100 rounded-xl bg-white flex-grow overflow-y-auto">
+        <table className="w-full text-left text-xs table-fixed">
+          <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[9px] sticky top-0">
+            <tr>
+              <th className="px-4 py-3 w-[25%]">案件</th>
+              <th className="px-4 py-3 w-[100px]">类型</th>
+              <th className="px-4 py-3 w-[130px]">时间</th>
+              <th className="px-4 py-3 w-[70px] text-right">时长</th>
+              <th className="px-4 py-3">内容</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {filtered.map(e => {
+              const c = cases.find(i => i.id === e.caseId);
+              const isActive = e.endTime === null;
+              const currentLiveDuration = isActive ? formatLiveDuration(e.startTime) : '';
+              const tooltipText = (c?.description || c?.name || '未知') + (isActive ? ` [当前已计时: ${currentLiveDuration}]` : '');
+              return (
+                <tr key={e.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-semibold">
+                    <Tooltip text={tooltipText} className="w-full">
+                      <span className="cursor-help block truncate">{c?.name}</span>
+                    </Tooltip>
+                  </td>
+                  <td className="px-4 py-3 truncate">{e.workType}</td>
+                  <td className="px-4 py-3 text-gray-500 font-mono text-[9px]">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
+                  <td className="px-4 py-3 text-right font-bold text-indigo-600">
+                    {isActive ? (
+                      <Tooltip text={`正在计时: ${currentLiveDuration}`}>
+                        <span className="flex items-center justify-end gap-1 cursor-help">
+                          <Icons.Clock className="animate-spin w-3 h-3" />
+                          {currentLiveDuration}
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      formatDurationDisplay(e.duration)
+                    )}
+                  </td>
+                  <td className="px-4 py-3 truncate text-gray-400">{e.workContent}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
