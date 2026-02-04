@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Case, TimeEntry, WorkType, AppData } from './types';
+import { Case, TimeEntry, WorkType, AppData, BackupSettings } from './types';
 import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, downloadCsv, downloadXlsx, formatDurationDisplay } from './utils';
 import { Icons } from './constants';
 
@@ -12,7 +12,6 @@ type AdminTab = 'cases' | 'worktypes' | 'records' | 'reports' | 'system';
 type SortField = 'case' | 'type' | 'time' | 'duration';
 type SortOrder = 'asc' | 'desc';
 
-// Helper to format duration with seconds for real-time display
 const formatLiveDuration = (startTime: number): string => {
   const diff = Math.floor((Date.now() - startTime) / 1000);
   const h = Math.floor(diff / 3600);
@@ -21,9 +20,6 @@ const formatLiveDuration = (startTime: number): string => {
   return [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
 };
 
-/**
- * 自定义 Tooltip 组件，解决原生 title 属性在内容动态更新时产生的闪烁问题。
- */
 const Tooltip: React.FC<{ text: string; children: React.ReactNode; className?: string }> = ({ text, children, className = "" }) => {
   const [isVisible, setIsVisible] = useState(false);
   return (
@@ -97,8 +93,10 @@ const App: React.FC = () => {
   const [cases, setCases] = useState<Case[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [workTypes, setWorkTypes] = useState<string[]>(DEFAULT_WORK_TYPES);
+  const [backupSettings, setBackupSettings] = useState<BackupSettings>({ interval: 0, lastBackupTime: Date.now() });
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [adminTab, setAdminTab] = useState<AdminTab>('cases');
+  const [notification, setNotification] = useState<string | null>(null);
   const [confirmConfig, setConfirmConfig] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; confirmText?: string; isDestructive?: boolean; }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   const [, setTick] = useState(0);
@@ -111,20 +109,40 @@ const App: React.FC = () => {
         if (parsed.cases) setCases(parsed.cases);
         if (parsed.entries) setEntries(parsed.entries);
         if (parsed.workTypes) setWorkTypes(parsed.workTypes);
+        if (parsed.backupSettings) setBackupSettings(parsed.backupSettings);
       } catch (e) { console.error("Failed to load data", e); }
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ cases, entries, workTypes }));
-  }, [cases, entries, workTypes]);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ cases, entries, workTypes, backupSettings }));
+  }, [cases, entries, workTypes, backupSettings]);
 
   useEffect(() => {
     const activeEntry = entries.find(e => e.endTime === null);
-    if (!activeEntry) return;
-    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    if (!activeEntry && backupSettings.interval === 0) return;
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+
+      // 自动备份逻辑
+      if (backupSettings.interval > 0) {
+        const now = Date.now();
+        const nextBackup = backupSettings.lastBackupTime + (backupSettings.interval * 60 * 1000);
+        if (now >= nextBackup) {
+          triggerAutoBackup();
+        }
+      }
+    }, 1000);
     return () => clearInterval(interval);
-  }, [entries]);
+  }, [entries, backupSettings]);
+
+  const triggerAutoBackup = useCallback(() => {
+    const now = Date.now();
+    setNotification("正在执行定时自动备份...");
+    downloadJson({ cases, entries, workTypes, timestamp: now }, `Chronos_AutoBackup_${formatDate(now)}.json`);
+    setBackupSettings(prev => ({ ...prev, lastBackupTime: now }));
+    setTimeout(() => setNotification(null), 5000);
+  }, [cases, entries, workTypes]);
 
   const stopAllTimers = useCallback((ts?: number) => {
     const timestamp = ts || Date.now();
@@ -137,14 +155,23 @@ const App: React.FC = () => {
   }, [stopAllTimers]);
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 md:p-8 text-slate-800 font-sans">
+    <div className="min-h-screen bg-gray-100 p-4 md:p-8 text-slate-800 font-sans relative">
       <ConfirmDialog {...confirmConfig} onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))} />
+
+      {/* 自动备份通知 */}
+      {notification && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[1000] bg-indigo-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-full duration-500 font-bold">
+          <Icons.Clock className="animate-spin" />
+          {notification}
+        </div>
+      )}
+
       <header className="max-w-4xl mx-auto flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-indigo-700 flex items-center gap-2"><span className="bg-indigo-700 text-white p-1 rounded shadow-lg">Chronos</span><span className="text-gray-600 font-light">时间记录器</span></h1>
         <button onClick={() => setIsAdminOpen(true)} className="flex items-center gap-2 bg-white hover:bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg shadow-sm transition-all"><Icons.Settings /> <span className="font-medium">管理</span></button>
       </header>
       <main className="max-w-4xl mx-auto"><Dashboard cases={cases.filter(c => c.isOpen)} entries={entries} workTypes={workTypes} onStart={startTimer} onStop={() => stopAllTimers()} /></main>
-      {isAdminOpen && <AdminOverlay tab={adminTab} setTab={setAdminTab} onClose={() => setIsAdminOpen(false)} cases={cases} setCases={setCases} entries={entries} setEntries={setEntries} workTypes={workTypes} setWorkTypes={setWorkTypes} showConfirm={(c:any) => setConfirmConfig({...c, isOpen:true})} />}
+      {isAdminOpen && <AdminOverlay tab={adminTab} setTab={setAdminTab} onClose={() => setIsAdminOpen(false)} cases={cases} setCases={setCases} entries={entries} setEntries={setEntries} workTypes={workTypes} setWorkTypes={setWorkTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={(c:any) => setConfirmConfig({...c, isOpen:true})} />}
     </div>
   );
 };
@@ -165,31 +192,18 @@ const Dashboard: React.FC<{ cases: Case[]; entries: TimeEntry[]; workTypes: stri
 };
 
 const CaseRow: React.FC<{ caseItem: Case; workTypes: string[]; onStart: (id: string, type: string, content: string, notes: string) => void; activeEntry: TimeEntry | null; }> = ({ caseItem, workTypes, onStart, activeEntry }) => {
-  // 核心逻辑：确保初始值和后续默认值变更能同步
   const [workType, setWorkType] = useState<string>(workTypes[0] || '');
   const [workContent, setWorkContent] = useState('');
   const [notes, setNotes] = useState('');
-
-  // 使用 ref 记录上一次的默认值，以便判断用户是否手动更改过
   const prevDefaultRef = useRef(workTypes[0]);
 
   const isActive = activeEntry !== null;
   const liveDuration = isActive ? formatLiveDuration(activeEntry.startTime) : '';
 
   useEffect(() => {
-    // 1. 如果当前选中的值无效（例如被删除了），重置为当前默认值
-    if (workTypes.length > 0 && !workTypes.includes(workType)) {
-      setWorkType(workTypes[0]);
-    }
-    // 2. 如果默认值（列表第一项）发生了变化，且用户当前选中的仍是“旧的默认值”，则自动跟随更新到“新的默认值”
-    else if (workTypes.length > 0 && workType === prevDefaultRef.current && workTypes[0] !== prevDefaultRef.current) {
-      setWorkType(workTypes[0]);
-    }
-    // 3. 如果当前为空且列表有值，初始化
-    else if (workTypes.length > 0 && workType === '') {
-      setWorkType(workTypes[0]);
-    }
-
+    if (workTypes.length > 0 && !workTypes.includes(workType)) setWorkType(workTypes[0]);
+    else if (workTypes.length > 0 && workType === prevDefaultRef.current && workTypes[0] !== prevDefaultRef.current) setWorkType(workTypes[0]);
+    else if (workTypes.length > 0 && workType === '') setWorkType(workTypes[0]);
     prevDefaultRef.current = workTypes[0];
   }, [workTypes, workType]);
 
@@ -236,18 +250,18 @@ const CaseRow: React.FC<{ caseItem: Case; workTypes: string[]; onStart: (id: str
   );
 };
 
-const AdminOverlay: React.FC<{ tab: AdminTab; setTab: (t: AdminTab) => void; onClose: () => void; cases: Case[]; setCases: any; entries: TimeEntry[]; setEntries: any; workTypes: string[]; setWorkTypes: any; showConfirm: any; }> = ({ tab, setTab, onClose, cases, setCases, entries, setEntries, workTypes, setWorkTypes, showConfirm }) => (
+const AdminOverlay: React.FC<{ tab: AdminTab; setTab: (t: AdminTab) => void; onClose: () => void; cases: Case[]; setCases: any; entries: TimeEntry[]; setEntries: any; workTypes: string[]; setWorkTypes: any; backupSettings: BackupSettings; setBackupSettings: any; showConfirm: any; }> = ({ tab, setTab, onClose, cases, setCases, entries, setEntries, workTypes, setWorkTypes, backupSettings, setBackupSettings, showConfirm }) => (
   <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div className="bg-white w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       <div className="border-b border-gray-100 flex justify-between items-center px-6 py-4 bg-gray-50 shrink-0"><h2 className="text-xl font-bold text-gray-800">管理后台</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button></div>
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-48 border-r border-gray-100 bg-gray-50 flex flex-col p-4 gap-2 shrink-0">{[{ id:'cases', label:'案件管理' },{ id:'worktypes', label:'类型管理' },{ id:'records', label:'记录管理' },{ id:'reports', label:'统计报表' },{ id:'system', label:'系统备份' }].map(t => (<button key={t.id} onClick={() => setTab(t.id as AdminTab)} className={`text-left px-4 py-2.5 rounded-lg transition-colors font-medium ${tab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}>{t.label}</button>))}</div>
+        <div className="w-48 border-r border-gray-100 bg-gray-50 flex flex-col p-4 gap-2 shrink-0">{[{ id:'cases', label:'案件管理' },{ id:'worktypes', label:'类型管理' },{ id:'records', label:'记录管理' },{ id:'reports', label:'统计报表' },{ id:'system', label:'备份与恢复' }].map(t => (<button key={t.id} onClick={() => setTab(t.id as AdminTab)} className={`text-left px-4 py-2.5 rounded-lg transition-colors font-medium ${tab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}>{t.label}</button>))}</div>
         <div className="flex-1 p-6 bg-white overflow-hidden">
           {tab === 'cases' && <CaseManagement cases={cases} setCases={setCases} setEntries={setEntries} showConfirm={showConfirm} />}
           {tab === 'worktypes' && <WorkTypeManagement workTypes={workTypes} setWorkTypes={setWorkTypes} showConfirm={showConfirm} />}
           {tab === 'records' && <RecordManagement cases={cases} entries={entries} workTypes={workTypes} setEntries={setEntries} showConfirm={showConfirm} />}
           {tab === 'reports' && <ReportGeneration cases={cases} entries={entries} />}
-          {tab === 'system' && <SystemManagement cases={cases} entries={entries} workTypes={workTypes} setCases={setCases} setEntries={setEntries} setWorkTypes={setWorkTypes} showConfirm={showConfirm} />}
+          {tab === 'system' && <SystemManagement cases={cases} entries={entries} workTypes={workTypes} setCases={setCases} setEntries={setEntries} setWorkTypes={setWorkTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={showConfirm} />}
         </div>
       </div>
     </div>
@@ -286,59 +300,31 @@ const CaseManagement: React.FC<{ cases: Case[]; setCases: any; setEntries: any; 
 
 const WorkTypeManagement: React.FC<{ workTypes: string[]; setWorkTypes: any; showConfirm: any; }> = ({ workTypes, setWorkTypes, showConfirm }) => {
   const [newType, setNewType] = useState('');
-
   const moveType = (index: number, direction: 'up' | 'down') => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     if (newIndex < 0 || newIndex >= workTypes.length) return;
-
     const updated = [...workTypes];
     [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
     setWorkTypes(updated);
   };
-
   return (
     <div className="flex flex-col h-full">
       <h3 className="text-lg font-bold text-gray-800 mb-6">工作类型管理</h3>
-      <div className="flex gap-2 mb-6">
-        <input type="text" placeholder="新类型" value={newType} onChange={(e) => setNewType(e.target.value)} className="flex-grow border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-200 outline-none transition-shadow" />
-        <button onClick={() => { if(newType) setWorkTypes((prev:any)=>[...prev, newType]); setNewType(''); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-indigo-700 transition-colors">添加</button>
-      </div>
-      <div className="flex-grow overflow-y-auto pr-1">
+      <div className="flex gap-2 mb-6"><input type="text" placeholder="新类型" value={newType} onChange={(e) => setNewType(e.target.value)} className="flex-grow border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-200 outline-none" /><button onClick={() => { if(newType) setWorkTypes((prev:any)=>[...prev, newType]); setNewType(''); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold shadow">添加</button></div>
+      <div className="flex-grow overflow-y-auto">
         {workTypes.map((type, index) => (
-          <div key={type + index} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl mb-2 group transition-colors hover:bg-white hover:shadow-sm">
+          <div key={type + index} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl mb-2 group">
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400 font-mono w-4">{index + 1}.</span>
               <div className="flex items-center gap-2">
                 <span className="font-medium text-gray-700">{type}</span>
-                {index === 0 && (
-                  <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-bold border border-indigo-200 shadow-sm animate-in fade-in zoom-in-90 duration-300">默认值</span>
-                )}
+                {index === 0 && <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-bold border border-indigo-200">默认值</span>}
               </div>
             </div>
             <div className="flex gap-1">
-              <button
-                onClick={() => moveType(index, 'up')}
-                disabled={index === 0}
-                className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-gray-100 transition-all"
-                title="上移"
-              >
-                <Icons.ArrowUp className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => moveType(index, 'down')}
-                disabled={index === workTypes.length - 1}
-                className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-gray-100 transition-all"
-                title="下移"
-              >
-                <Icons.ArrowDown className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => showConfirm({ title:"删除类型", message:`确定删除 ${type} 吗？`, isDestructive: true, onConfirm: () => setWorkTypes((prev:any)=>prev.filter((_:any, i:any)=>i!==index)) })}
-                className="p-1.5 text-red-400 hover:text-red-600 rounded-lg hover:bg-gray-100 transition-all ml-1"
-                title="删除"
-              >
-                <Icons.Trash className="w-4 h-4" />
-              </button>
+              <button onClick={() => moveType(index, 'up')} disabled={index === 0} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-gray-100 transition-all"><Icons.ArrowUp className="w-4 h-4" /></button>
+              <button onClick={() => moveType(index, 'down')} disabled={index === workTypes.length - 1} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-gray-100 transition-all"><Icons.ArrowDown className="w-4 h-4" /></button>
+              <button onClick={() => showConfirm({ title:"删除类型", message:`确定删除 ${type} 吗？`, isDestructive: true, onConfirm: () => setWorkTypes((prev:any)=>prev.filter((_:any, i:any)=>i!==index)) })} className="p-1.5 text-red-400 hover:text-red-600 rounded-lg hover:bg-gray-100 transition-all ml-1"><Icons.Trash className="w-4 h-4" /></button>
             </div>
           </div>
         ))}
@@ -402,25 +388,10 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
               return (
                 <tr key={e.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3"><input type="checkbox" disabled={e.endTime===null} checked={batchSelection.includes(e.id)} onChange={()=>setBatchSelection(p=>p.includes(e.id)?p.filter(i=>i!==e.id):[...p,e.id])} /></td>
-                  <td className="px-4 py-3 font-medium">
-                    <Tooltip text={tooltipText} className="w-full">
-                      <span className="cursor-help block truncate">{c?.name}</span>
-                    </Tooltip>
-                  </td>
+                  <td className="px-4 py-3 font-medium"><Tooltip text={tooltipText} className="w-full"><span className="cursor-help block truncate">{c?.name}</span></Tooltip></td>
                   <td className="px-4 py-3 truncate">{e.workType}</td>
                   <td className="px-4 py-3 text-[10px] text-gray-500 font-mono">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
-                  <td className="px-4 py-3 font-bold text-indigo-600">
-                    {isActive ? (
-                      <Tooltip text={`正在计时: ${currentLiveDuration}`}>
-                        <span className="flex items-center gap-1 cursor-help">
-                          <Icons.Clock className="animate-spin w-3 h-3" />
-                          {currentLiveDuration}
-                        </span>
-                      </Tooltip>
-                    ) : (
-                      formatDurationDisplay(e.duration)
-                    )}
-                  </td>
+                  <td className="px-4 py-3 font-bold text-indigo-600">{isActive ? <Tooltip text={`正在计时: ${currentLiveDuration}`}><span className="flex items-center gap-1 cursor-help"><Icons.Clock className="animate-spin w-3 h-3" />{currentLiveDuration}</span></Tooltip> : formatDurationDisplay(e.duration)}</td>
                   <td className="px-4 py-3"><button onClick={()=>{setIsNewRecord(false);setEditingEntry(e)}} className="text-indigo-600 text-xs">编辑</button></td>
                 </tr>
               );
@@ -441,126 +412,41 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const filtered = useMemo(() => {
     const s = new Date(startDate).getTime(); const e = new Date(endDate).getTime() + 86400000;
-    const items = entries.filter(item => item.startTime >= s && item.startTime <= e && (selectedCaseIds.length === 0 || selectedCaseIds.includes(item.caseId)));
-    return items.sort((a,b)=>b.startTime-a.startTime);
+    return entries.filter(item => item.startTime >= s && item.startTime <= e && (selectedCaseIds.length === 0 || selectedCaseIds.includes(item.caseId))).sort((a,b)=>b.startTime-a.startTime);
   }, [entries, startDate, endDate, selectedCaseIds]);
-
   const stats = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(e => m.set(e.caseId, (m.get(e.caseId) || 0) + e.duration));
     return Array.from(m.entries()).map(([id, total]) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total }));
   }, [filtered, cases]);
-
   const prepareData = () => {
     const map = new Map<string, any>();
     filtered.forEach(e => {
       const caseName = cases.find(c=>c.id===e.caseId)?.name || '未知';
       const key = `${e.caseId}|${e.workType}|${e.workContent}|${e.notes}|${formatDate(e.startTime)}`;
-      const timeRange = `${formatDateTime(e.startTime)} - ${formatDateTime(e.endTime)}`;
-      if(map.has(key)) {
-        const obj = map.get(key);
-        obj.ranges.push(timeRange);
-        obj.duration += e.duration;
-      } else {
-        map.set(key, { caseName, workType: e.workType, workContent: e.workContent, notes: e.notes, ranges: [timeRange], duration: e.duration, timestamp: e.startTime });
-      }
+      if(map.has(key)) { const o = map.get(key); o.duration += e.duration; }
+      else { map.set(key, { caseName, workType: e.workType, workContent: e.workContent, notes: e.notes, duration: e.duration, timestamp: e.startTime }); }
     });
-
-    const aggregated = Array.from(map.values()).sort((a,b) => b.timestamp - a.timestamp);
-    const mainRows = aggregated.map(o => [o.caseName, o.workType, o.workContent, o.notes, o.ranges.join('\n'), o.duration.toString()]);
-    const summaryRows = stats.map(s => [s.name, '总计', '', '', '', s.total.toString()]);
-    return { mainRows, summaryRows };
+    const mainRows = Array.from(map.values()).map(o => [o.caseName, o.workType, o.workContent, o.notes, '', o.duration.toString()]);
+    return { mainRows, summaryRows: stats.map(s => [s.name, '总计', '', '', '', s.total.toString()]) };
   };
-
   const headers = ['案件', '工作类型', '工作内容', '注释', '起止时间', '时长(m)'];
-  const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, ['','','','','',''], ...summaryRows], `Report_${startDate}.csv`); };
-  const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, ['','','','','',''], ...summaryRows], `Report_${startDate}.xlsx`); };
-
+  const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Report.csv`); };
+  const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Report.xlsx`); };
   return (
     <div className="space-y-6 flex flex-col h-full overflow-hidden">
-      <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 flex flex-col gap-4 shrink-0">
-        <div className="grid grid-cols-2 gap-4">
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border rounded p-2 text-sm" />
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {cases.map(c => (<button key={c.id} onClick={()=>setSelectedCaseIds(p=>p.includes(c.id)?p.filter(i=>i!==c.id):[...p,c.id])} className={`text-[10px] px-2 py-1 rounded-full border transition-all ${selectedCaseIds.includes(c.id)?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500'}`}>{c.name}</button>))}
-        </div>
+      <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 grid grid-cols-2 gap-4 shrink-0">
+        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border rounded p-2 text-sm" />
+        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
       </div>
-      <div className="flex justify-between items-center shrink-0">
-        <h3 className="text-lg font-bold text-gray-800">报表明细</h3>
-        <div className="flex gap-2">
-          <button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold">CSV</button>
-          <button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold">Excel (XLSX)</button>
-        </div>
-      </div>
-      <div className="grid grid-cols-4 gap-4 shrink-0">
-        {stats.map(s => {
-          const c = cases.find(item => item.id === s.id);
-          const activeEntryForCase = entries.find(e => e.caseId === s.id && e.endTime === null);
-          const liveText = activeEntryForCase ? ` [当前已计时: ${formatLiveDuration(activeEntryForCase.startTime)}]` : '';
-          return (
-            <Tooltip key={s.id} text={(c ? (c.description || c.name) : s.name) + liveText}>
-              <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 cursor-help h-full">
-                <p className="text-[9px] text-indigo-400 font-bold truncate">{s.name}</p>
-                <p className="text-lg font-black text-indigo-700">
-                  {formatDurationDisplay(s.total)}
-                  {activeEntryForCase && <span className="text-[10px] ml-1 text-red-500 animate-pulse">+计</span>}
-                </p>
-              </div>
-            </Tooltip>
-          );
-        })}
-      </div>
-      <div className="border border-gray-100 rounded-xl bg-white flex-grow min-h-0 overflow-y-auto">
-        <table className="w-full text-left text-xs table-fixed">
-          <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[9px] sticky top-0">
-            <tr>
-              <th className="px-4 py-3 w-[25%]">案件</th>
-              <th className="px-4 py-3 w-[100px]">类型</th>
-              <th className="px-4 py-3 w-[130px]">时间</th>
-              <th className="px-4 py-3 w-[70px] text-right">时长</th>
-              <th className="px-4 py-3">内容</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {filtered.map(e => {
-              const c = cases.find(i => i.id === e.caseId);
-              const isActive = e.endTime === null;
-              const currentLiveDuration = isActive ? formatLiveDuration(e.startTime) : '';
-              return (
-                <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-semibold">
-                    <Tooltip text={(c ? (c.description || c.name) : '未知案件') + (isActive ? ` [当前已计时: ${currentLiveDuration}]` : '')} className="w-full">
-                      <span className="cursor-help block truncate">{c?.name}</span>
-                    </Tooltip>
-                  </td>
-                  <td className="px-4 py-3 truncate">{e.workType}</td>
-                  <td className="px-4 py-3 text-gray-500 font-mono text-[9px]">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-indigo-600">
-                    {isActive ? (
-                      <Tooltip text={`正在计时: ${currentLiveDuration}`}>
-                        <span className="flex items-center justify-end gap-1 cursor-help">
-                          <Icons.Clock className="animate-spin w-2 h-2" />
-                          {currentLiveDuration}
-                        </span>
-                      </Tooltip>
-                    ) : (
-                      formatDurationDisplay(e.duration)
-                    )}
-                  </td>
-                  <td className="px-4 py-3 truncate text-gray-400">{e.workContent}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold">CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold">XLSX</button></div></div>
+      <div className="grid grid-cols-4 gap-4 shrink-0">{stats.map(s => <div key={s.id} className="bg-indigo-50 p-3 rounded-xl border border-indigo-100"><p className="text-[9px] text-indigo-400 font-bold truncate">{s.name}</p><p className="text-lg font-black text-indigo-700">{formatDurationDisplay(s.total)}</p></div>)}</div>
+      <div className="border border-gray-100 rounded-xl bg-white flex-grow overflow-y-auto"><table className="w-full text-left text-xs table-fixed"><thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[9px] sticky top-0"><tr><th className="px-4 py-3 w-[25%]">案件</th><th className="px-4 py-3 w-[100px]">类型</th><th className="px-4 py-3 w-[130px]">时间</th><th className="px-4 py-3 w-[70px] text-right">时长</th><th className="px-4 py-3">内容</th></tr></thead><tbody className="divide-y divide-gray-50">{filtered.map(e => <tr key={e.id} className="hover:bg-gray-50"><td className="px-4 py-3 font-semibold truncate">{cases.find(i=>i.id===e.caseId)?.name}</td><td className="px-4 py-3 truncate">{e.workType}</td><td className="px-4 py-3 text-gray-500 font-mono text-[9px]">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td><td className="px-4 py-3 text-right font-bold text-indigo-600">{formatDurationDisplay(e.duration)}</td><td className="px-4 py-3 truncate text-gray-400">{e.workContent}</td></tr>)}</tbody></table></div>
     </div>
   );
 };
 
-const SystemManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workTypes: string[]; setCases: any; setEntries: any; setWorkTypes: any; showConfirm: any; }> = ({ cases, entries, workTypes, setCases, setEntries, setWorkTypes, showConfirm }) => {
+const SystemManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workTypes: string[]; setCases: any; setEntries: any; setWorkTypes: any; backupSettings: BackupSettings; setBackupSettings: any; showConfirm: any; }> = ({ cases, entries, workTypes, setCases, setEntries, setWorkTypes, backupSettings, setBackupSettings, showConfirm }) => {
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     try {
@@ -568,8 +454,60 @@ const SystemManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
       if (parsed && Array.isArray(parsed.cases)) { showConfirm({ title: "恢复数据", message: "确定覆盖现有数据吗？", isDestructive: true, onConfirm: () => { setCases(parsed.cases); setEntries(parsed.entries); if(parsed.workTypes) setWorkTypes(parsed.workTypes); } }); }
     } catch (err) { window.alert("读取失败"); } finally { e.target.value = ''; }
   };
+
+  const intervals = [
+    { label: '关闭', value: 0 },
+    { label: '每15分钟', value: 15 },
+    { label: '每30分钟', value: 30 },
+    { label: '每1小时', value: 60 },
+    { label: '每4小时', value: 240 },
+    { label: '每12小时', value: 720 },
+    { label: '每天', value: 1440 },
+  ];
+
   return (
-    <div className="max-w-xl mx-auto py-10 text-center"><div className="bg-indigo-50 p-8 rounded-2xl border border-indigo-100 mb-8"><h4 className="text-xl font-black text-indigo-900 mb-4">备份数据</h4><button onClick={() => downloadJson({ cases, entries, workTypes, timestamp: Date.now() }, `Chronos_Backup.json`)} className="bg-indigo-600 text-white px-10 py-3 rounded-xl font-bold shadow-lg">立即备份 (JSON)</button></div><div className="border-2 border-dashed border-gray-200 rounded-2xl p-10 hover:border-indigo-300"><h4 className="font-bold text-gray-700 mb-4">恢复备份</h4><label className="bg-white border border-gray-300 px-6 py-2 rounded-lg cursor-pointer hover:bg-gray-50 inline-block font-medium">选择并导入<input type="file" accept=".json" onChange={handleRestore} className="hidden" /></label></div></div>
+    <div className="max-w-2xl mx-auto py-6 space-y-8">
+      {/* 定时备份配置 */}
+      <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-lg font-bold text-indigo-900">自动定时备份</h4>
+          <span className={`px-2 py-1 rounded text-xs font-bold ${backupSettings.interval > 0 ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'}`}>
+            {backupSettings.interval > 0 ? '已开启' : '已禁用'}
+          </span>
+        </div>
+        <div className="space-y-4">
+          <p className="text-xs text-indigo-700/70">开启后，应用将在设定的时间间隔自动下载备份文件到您的本地下载目录。</p>
+          <div className="grid grid-cols-3 gap-2">
+            {intervals.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setBackupSettings({ ...backupSettings, interval: opt.value })}
+                className={`px-3 py-2 rounded-lg text-sm transition-all border ${backupSettings.interval === opt.value ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {backupSettings.interval > 0 && (
+            <p className="text-[10px] text-indigo-400 font-mono mt-2 italic text-center">
+              上次备份: {formatDateTime(backupSettings.lastBackupTime)} |
+              下次预计: {formatDateTime(backupSettings.lastBackupTime + backupSettings.interval * 60 * 1000)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm text-center">
+          <h4 className="font-bold text-gray-700 mb-4">手动备份数据</h4>
+          <button onClick={() => downloadJson({ cases, entries, workTypes, timestamp: Date.now() }, `Chronos_ManualBackup.json`)} className="w-full bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold shadow-lg hover:bg-indigo-700">立即备份 (JSON)</button>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm text-center">
+          <h4 className="font-bold text-gray-700 mb-4">恢复备份文件</h4>
+          <label className="w-full bg-gray-100 border border-gray-300 px-6 py-2 rounded-xl cursor-pointer hover:bg-gray-200 inline-block font-bold text-gray-600">选择并导入<input type="file" accept=".json" onChange={handleRestore} className="hidden" /></label>
+        </div>
+      </div>
+    </div>
   );
 };
 

@@ -19,15 +19,21 @@ export interface TimeEntry {
   id: string;
   caseId: string;
   workType: string;
-  workContent: string; // 已修改：从 attorney 改为 workContent
+  workContent: string;
   notes: string;
   startTime: number;
   endTime: number | null;
   duration: number;
 }
 
+export interface BackupSettings {
+  interval: number; // 间隔分钟数，0 表示关闭
+  lastBackupTime: number;
+}
+
 export interface AppData {
   cases: Case[];
   entries: TimeEntry[];
   workTypes: string[];
+  backupSettings?: BackupSettings;
 }
