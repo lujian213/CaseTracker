@@ -22,8 +22,22 @@ export const formatDate = (timestamp: number): string => {
   const date = isNaN(Number(timestamp)) ? new Date() : new Date(timestamp);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${d}`;
+};
+
+/**
+ * 生成格式为 YYYYMMDD_HHmmss 的完整时间戳字符串，常用于文件名
+ */
+export const formatFullTimestamp = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${year}${month}${d}_${hh}${mm}${ss}`;
 };
 
 export const calculateDuration = (start: number, end: number | null): number => {

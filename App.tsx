@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Case, TimeEntry, WorkType, AppData, BackupSettings } from './types';
-import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, downloadCsv, downloadXlsx, formatDurationDisplay } from './utils';
+import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay } from './utils';
 import { Icons } from './constants';
 
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
@@ -139,7 +139,8 @@ const App: React.FC = () => {
   const triggerAutoBackup = useCallback(() => {
     const now = Date.now();
     setNotification("正在执行定时自动备份...");
-    downloadJson({ cases, entries, workTypes, timestamp: now }, `Chronos_AutoBackup_${formatDate(now)}.json`);
+    // 修改文件名逻辑：使用包含时分秒的完整时间戳，如 Chronos_AutoBackup_20231027_143005.json
+    downloadJson({ cases, entries, workTypes, timestamp: now }, `Chronos_AutoBackup_${formatFullTimestamp(now)}.json`);
     setBackupSettings(prev => ({ ...prev, lastBackupTime: now }));
     setTimeout(() => setNotification(null), 5000);
   }, [cases, entries, workTypes]);
