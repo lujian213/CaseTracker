@@ -20,21 +20,64 @@ const formatLiveDuration = (startTime: number): string => {
   return [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
 };
 
+/**
+ * 优化版 Tooltip：
+ * 1. 使用 fixed 定位彻底解决容器遮挡（overflow-hidden）问题。
+ * 2. 限制最大高度并支持滚动，解决纵向占用过大问题。
+ */
 const Tooltip: React.FC<{ text: string; children: React.ReactNode; className?: string }> = ({ text, children, className = "" }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const [position, setPosition] = useState<'top' | 'bottom'>('top');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const updatePosition = () => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceAbove = rect.top;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      // 如果上方空间不足 100px 且下方空间更大，则显示在下方
+      setPosition(spaceAbove < 100 && spaceBelow > spaceAbove ? 'bottom' : 'top');
+    }
+  };
+
+  const handleMouseEnter = () => {
+    updatePosition();
+    setIsVisible(true);
+  };
+
   return (
     <div
-      className={`relative inline-block ${className}`}
-      onMouseEnter={() => setIsVisible(true)}
+      ref={containerRef}
+      className={`inline-flex items-center min-w-0 ${className}`}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setIsVisible(false)}
     >
-      {children}
-      {isVisible && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-[10px] rounded shadow-xl whitespace-nowrap z-[1000] pointer-events-none animate-in fade-in zoom-in-95 duration-150">
-          {text}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[4px] border-transparent border-t-gray-800"></div>
-        </div>
-      )}
+      <div className="relative inline-block w-full min-w-0">
+        {children}
+        {isVisible && (
+          <div
+            className="fixed z-[2000] pointer-events-none animate-in fade-in zoom-in-95 duration-100"
+            style={{
+              left: containerRef.current?.getBoundingClientRect().left! + (containerRef.current?.getBoundingClientRect().width! / 2),
+              top: position === 'top'
+                ? containerRef.current?.getBoundingClientRect().top! - 8
+                : containerRef.current?.getBoundingClientRect().bottom! + 8,
+              transform: position === 'top' ? 'translate(-50%, -100%)' : 'translateX(-50%)'
+            }}
+          >
+            <div className="bg-gray-900/95 backdrop-blur-sm shadow-2xl p-2 rounded-lg border border-gray-700 max-w-[220px] sm:max-w-xs">
+              <div className="text-white text-[10px] leading-relaxed max-h-24 overflow-y-auto custom-scrollbar break-words text-center">
+                {text}
+              </div>
+              <div
+                className={`absolute left-1/2 -translate-x-1/2 border-[5px] border-transparent
+                  ${position === 'top' ? 'top-full border-t-gray-900/95' : 'bottom-full border-b-gray-900/95'}
+                `}
+              ></div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -79,10 +122,10 @@ const ConfirmDialog: React.FC<{ isOpen: boolean; title: string; message: string;
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[500] p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs overflow-hidden border border-gray-100">
-        <div className="p-5"><h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3><p className="text-gray-600 text-xs leading-relaxed">{message}</p></div>
-        <div className="bg-gray-50 px-5 py-3 flex justify-end gap-2 border-t border-gray-100">
-          <button onClick={onCancel} className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-200 rounded-lg transition-colors">取消</button>
-          <button onClick={() => { onConfirm(); onCancel(); }} className={`px-3 py-1.5 text-xs font-bold text-white rounded-lg shadow-sm ${isDestructive ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>{confirmText}</button>
+        <div className="p-5"><h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3><p className="text-gray-600 text-sm leading-relaxed">{message}</p></div>
+        <div className="flex justify-end gap-2 p-4 bg-gray-50 border-t border-gray-100">
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-200 rounded-lg transition-colors">取消</button>
+          <button onClick={() => { onConfirm(); onCancel(); }} className={`px-4 py-2 text-sm font-bold text-white rounded-lg shadow-sm ${isDestructive ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>{confirmText}</button>
         </div>
       </div>
     </div>
@@ -110,7 +153,7 @@ const App: React.FC = () => {
         if (parsed.entries) setEntries(parsed.entries);
         if (parsed.workTypes) setWorkTypes(parsed.workTypes);
         if (parsed.backupSettings) setBackupSettings(parsed.backupSettings);
-      } catch (e) { console.error("Failed to load data", e); }
+      } catch (e) { console.error("数据加载失败", e); }
     }
   }, []);
 
@@ -123,14 +166,10 @@ const App: React.FC = () => {
     if (!activeEntry && backupSettings.interval === 0) return;
     const interval = setInterval(() => {
       setTick(t => t + 1);
-
-      // 自动备份逻辑
       if (backupSettings.interval > 0) {
         const now = Date.now();
         const nextBackup = backupSettings.lastBackupTime + (backupSettings.interval * 60 * 1000);
-        if (now >= nextBackup) {
-          triggerAutoBackup();
-        }
+        if (now >= nextBackup) triggerAutoBackup();
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -139,8 +178,7 @@ const App: React.FC = () => {
   const triggerAutoBackup = useCallback(() => {
     const now = Date.now();
     setNotification("正在执行定时自动备份...");
-    // 修改文件名逻辑：使用包含时分秒的完整时间戳，如 Chronos_AutoBackup_20231027_143005.json
-    downloadJson({ cases, entries, workTypes, timestamp: now }, `Chronos_AutoBackup_${formatFullTimestamp(now)}.json`);
+    downloadJson({ cases, entries, workTypes, timestamp: now }, `Chronos_自动备份_${formatFullTimestamp(now)}.json`);
     setBackupSettings(prev => ({ ...prev, lastBackupTime: now }));
     setTimeout(() => setNotification(null), 5000);
   }, [cases, entries, workTypes]);
@@ -158,20 +196,24 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8 text-slate-800 font-sans relative">
       <ConfirmDialog {...confirmConfig} onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))} />
-
-      {/* 自动备份通知 */}
       {notification && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[1000] bg-indigo-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-full duration-500 font-bold">
-          <Icons.Clock className="animate-spin" />
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[1000] bg-indigo-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-full duration-500 font-bold text-sm">
+          <Icons.Clock className="animate-spin w-5 h-5" />
           {notification}
         </div>
       )}
-
       <header className="max-w-4xl mx-auto flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-indigo-700 flex items-center gap-2"><span className="bg-indigo-700 text-white p-1 rounded shadow-lg">Chronos</span><span className="text-gray-600 font-light">时间记录器</span></h1>
-        <button onClick={() => setIsAdminOpen(true)} className="flex items-center gap-2 bg-white hover:bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg shadow-sm transition-all"><Icons.Settings /> <span className="font-medium">管理</span></button>
+        <h1 className="text-2xl font-bold text-indigo-700 flex items-center gap-2">
+          <span className="bg-indigo-700 text-white px-2 py-0.5 rounded shadow-lg">Chronos</span>
+          <span className="text-gray-600 font-light hidden sm:inline">时间记录器</span>
+        </h1>
+        <button onClick={() => setIsAdminOpen(true)} className="flex items-center gap-2 bg-white hover:bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg shadow-sm transition-all text-sm font-medium">
+          <Icons.Settings className="w-5 h-5" /> 管理
+        </button>
       </header>
-      <main className="max-w-4xl mx-auto"><Dashboard cases={cases.filter(c => c.isOpen)} entries={entries} workTypes={workTypes} onStart={startTimer} onStop={() => stopAllTimers()} /></main>
+      <main className="max-w-4xl mx-auto">
+        <Dashboard cases={cases.filter(c => c.isOpen)} entries={entries} workTypes={workTypes} onStart={startTimer} onStop={() => stopAllTimers()} />
+      </main>
       {isAdminOpen && <AdminOverlay tab={adminTab} setTab={setAdminTab} onClose={() => setIsAdminOpen(false)} cases={cases} setCases={setCases} entries={entries} setEntries={setEntries} workTypes={workTypes} setWorkTypes={setWorkTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={(c:any) => setConfirmConfig({...c, isOpen:true})} />}
     </div>
   );
@@ -187,7 +229,11 @@ const Dashboard: React.FC<{ cases: Case[]; entries: TimeEntry[]; workTypes: stri
             <div className="divide-y divide-gray-100">{cases.map(c => <CaseRow key={c.id} caseItem={c} workTypes={workTypes} onStart={onStart} activeEntry={activeEntry?.caseId === c.id ? activeEntry : null} />)}</div>}
         </div>
       </div>
-      <div className="flex justify-center mt-8"><button onClick={onStop} className="bg-gray-800 hover:bg-black text-white px-10 py-3 rounded-full shadow-lg flex items-center gap-2 transition-all font-bold active:scale-95"><Icons.Stop /> 休息 (停止计时)</button></div>
+      <div className="flex justify-center mt-8">
+        <button onClick={onStop} className="bg-gray-800 hover:bg-black text-white px-10 py-3 rounded-full shadow-lg flex items-center gap-2 transition-all font-bold active:scale-95 text-base">
+          <Icons.Stop className="w-5 h-5" /> 休息 (停止计时)
+        </button>
+      </div>
     </div>
   );
 };
@@ -209,40 +255,40 @@ const CaseRow: React.FC<{ caseItem: Case; workTypes: string[]; onStart: (id: str
   }, [workTypes, workType]);
 
   const baseTitle = caseItem.description || caseItem.name;
-  const tooltipText = isActive ? `${baseTitle} [当前已计时: ${liveDuration}]` : baseTitle;
+  const tooltipText = isActive ? `${baseTitle} [计时中: ${liveDuration}]` : baseTitle;
 
   return (
     <div className={`p-4 transition-colors flex flex-col md:flex-row md:items-center gap-4 first:rounded-t-xl last:rounded-b-xl ${isActive ? 'bg-indigo-50 border-l-4 border-indigo-500' : 'hover:bg-gray-50'}`}>
-      <div className="flex-grow group relative">
-        <Tooltip text={tooltipText} className="block">
-          <h3 className="font-semibold text-gray-800 flex items-center gap-2 cursor-help">
-            {caseItem.name}
-            <Icons.ChevronRight className="opacity-0 group-hover:opacity-30 w-3 h-3" />
+      <div className="flex-grow group relative min-w-0 flex-1">
+        <Tooltip text={tooltipText} className="w-full">
+          <h3 className="font-semibold text-gray-800 flex items-center gap-2 cursor-help overflow-hidden">
+            <span className="truncate flex-1 text-base">{caseItem.name}</span>
+            <Icons.ChevronRight className="shrink-0 opacity-0 group-hover:opacity-30 w-4 h-4" />
           </h3>
         </Tooltip>
-        <p className="text-xs text-gray-500 font-mono">{caseItem.code}</p>
+        <p className="text-xs text-gray-400 font-mono truncate tracking-tight">{caseItem.code}</p>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <EditableSelect value={workType} onChange={setWorkType} options={workTypes} className="w-full md:w-32" placeholder="类型" />
-        <input type="text" placeholder="工作内容" value={workContent} onChange={(e) => setWorkContent(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm md:w-28 focus:ring-2 focus:ring-indigo-200 outline-none" />
-        <input type="text" placeholder="注释" value={notes} onChange={(e) => setNotes(e.target.value)} className="border border-gray-300 rounded px-3 py-1 text-sm flex-grow md:w-40" />
+      <div className="flex flex-wrap items-center gap-3 shrink-0">
+        <EditableSelect value={workType} onChange={setWorkType} options={workTypes} className="w-full md:w-36" placeholder="类型" />
+        <input type="text" placeholder="工作内容" value={workContent} onChange={(e) => setWorkContent(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm md:w-32 focus:ring-2 focus:ring-indigo-100 outline-none" />
+        <input type="text" placeholder="注释" value={notes} onChange={(e) => setNotes(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm flex-grow md:w-40" />
         <Tooltip text={isActive ? `计时中: ${liveDuration}` : "开始计时"}>
           <button
             onClick={() => onStart(caseItem.id, workType, workContent, notes)}
             disabled={isActive}
-            className={`flex items-center justify-center gap-3 px-4 py-1.5 rounded text-sm font-bold shadow transition-all min-w-[130px] ${isActive ? 'bg-white text-indigo-600 border border-indigo-200 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'}`}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-bold shadow transition-all min-w-[130px] ${isActive ? 'bg-white text-indigo-600 border border-indigo-200 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'}`}
           >
             {isActive ? (
-              <div className="flex items-center gap-2 py-0.5">
+              <div className="flex items-center gap-2">
                 <div className="flex h-2 w-2 relative">
                   <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></div>
                   <div className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></div>
                 </div>
-                <Icons.Clock className="animate-spin text-indigo-500" style={{ animationDuration: '3s' }} />
-                <span className="font-mono text-xs tabular-nums tracking-tighter">{liveDuration}</span>
+                <Icons.Clock className="animate-spin text-indigo-500 w-4 h-4" />
+                <span className="font-mono tabular-nums tracking-tighter">{liveDuration}</span>
               </div>
             ) : (
-              <><Icons.Play /> 开始计时</>
+              <><Icons.Play className="w-4 h-4" /> 开始计时</>
             )}
           </button>
         </Tooltip>
@@ -256,8 +302,8 @@ const AdminOverlay: React.FC<{ tab: AdminTab; setTab: (t: AdminTab) => void; onC
     <div className="bg-white w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       <div className="border-b border-gray-100 flex justify-between items-center px-6 py-4 bg-gray-50 shrink-0"><h2 className="text-xl font-bold text-gray-800">管理后台</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button></div>
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-48 border-r border-gray-100 bg-gray-50 flex flex-col p-4 gap-2 shrink-0">{[{ id:'cases', label:'案件管理' },{ id:'worktypes', label:'类型管理' },{ id:'records', label:'记录管理' },{ id:'reports', label:'统计报表' },{ id:'system', label:'备份与恢复' }].map(t => (<button key={t.id} onClick={() => setTab(t.id as AdminTab)} className={`text-left px-4 py-2.5 rounded-lg transition-colors font-medium ${tab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}>{t.label}</button>))}</div>
-        <div className="flex-1 p-6 bg-white overflow-hidden">
+        <div className="w-48 border-r border-gray-100 bg-gray-50 flex flex-col p-4 gap-2 shrink-0">{[{ id:'cases', label:'案件管理' },{ id:'worktypes', label:'类型管理' },{ id:'records', label:'记录管理' },{ id:'reports', label:'统计报表' },{ id:'system', label:'备份与恢复' }].map(t => (<button key={t.id} onClick={() => setTab(t.id as AdminTab)} className={`text-left px-4 py-2.5 rounded-lg transition-colors font-bold text-sm ${tab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}>{t.label}</button>))}</div>
+        <div className="flex-1 p-6 bg-white overflow-hidden relative">
           {tab === 'cases' && <CaseManagement cases={cases} setCases={setCases} setEntries={setEntries} showConfirm={showConfirm} />}
           {tab === 'worktypes' && <WorkTypeManagement workTypes={workTypes} setWorkTypes={setWorkTypes} showConfirm={showConfirm} />}
           {tab === 'records' && <RecordManagement cases={cases} entries={entries} workTypes={workTypes} setEntries={setEntries} showConfirm={showConfirm} />}
@@ -275,25 +321,25 @@ const CaseManagement: React.FC<{ cases: Case[]; setCases: any; setEntries: any; 
   const saveCase = (c: Case) => { setCases((prev: Case[]) => prev.find(item => item.id === c.id) ? prev.map(item => item.id === c.id ? c : item) : [...prev, c]); setEditingCase(null); setIsAdding(false); };
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex justify-between items-center mb-6 shrink-0"><h3 className="text-lg font-bold text-gray-800">所有案件</h3><button onClick={() => { setIsAdding(true); setEditingCase({ id: generateId('C-'), code: `CASE-${Math.floor(1000 + Math.random() * 9000)}`, name: '', description: '', isOpen: true }); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow"><Icons.Plus /> 创建案件</button></div>
-      <div className="grid gap-4 overflow-y-auto pr-2 pb-4">
+      <div className="flex justify-between items-center mb-6 shrink-0"><h3 className="text-lg font-bold text-gray-800">案件列表</h3><button onClick={() => { setIsAdding(true); setEditingCase({ id: generateId('C-'), code: `CASE-${Math.floor(1000 + Math.random() * 9000)}`, name: '', description: '', isOpen: true }); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow text-sm font-bold"><Icons.Plus className="w-4 h-4" /> 创建新案件</button></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-2 pb-4 custom-scrollbar">
         {cases.map(c => (
-          <div key={c.id} className="border border-gray-200 rounded-xl p-4 flex justify-between bg-white hover:border-indigo-200">
-            <div>
-              <div className="flex items-center gap-3 mb-1">
-                <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">{c.code}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${c.isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{c.isOpen ? '打开' : '关闭'}</span>
+          <div key={c.id} className="border border-gray-200 rounded-xl p-4 flex justify-between bg-gray-50/30 hover:border-indigo-200 transition-colors min-w-0">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] font-mono bg-gray-200 px-2 py-0.5 rounded text-gray-500 shrink-0 uppercase">{c.code}</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 font-bold ${c.isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-300 text-gray-600'}`}>{c.isOpen ? '启用中' : '已关闭'}</span>
               </div>
-              <Tooltip text={c.description || c.name}>
-                <h4 className="font-bold text-gray-800 cursor-help">{c.name}</h4>
+              <Tooltip text={c.description || c.name} className="w-full">
+                <h4 className="font-bold text-gray-700 cursor-help truncate text-sm">{c.name}</h4>
               </Tooltip>
             </div>
-            <div className="flex gap-2"><button onClick={() => setEditingCase(c)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"><Icons.Edit /></button><button onClick={() => showConfirm({ title: "删除案件", message: "确定要删除吗？计时记录也将删除。", isDestructive: true, confirmText: "删除", onConfirm: () => { setCases((prev:Case[]) => prev.filter(item => item.id !== c.id)); setEntries((prev:any[]) => prev.filter(e => e.caseId !== c.id)); } })} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Icons.Trash /></button></div>
+            <div className="flex gap-1 shrink-0 ml-2"><button onClick={() => setEditingCase(c)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"><Icons.Edit className="w-4 h-4" /></button><button onClick={() => showConfirm({ title: "删除案件", message: "确定要删除吗？该案件的所有计时记录也将被永久删除。", isDestructive: true, confirmText: "立即删除", onConfirm: () => { setCases((prev:Case[]) => prev.filter(item => item.id !== c.id)); setEntries((prev:any[]) => prev.filter(e => e.caseId !== c.id)); } })} className="p-2 text-red-500 hover:bg-red-50 rounded-md transition-colors"><Icons.Trash className="w-4 h-4" /></button></div>
           </div>
         ))}
       </div>
       {(editingCase || isAdding) && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4"><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md"><h4 className="text-lg font-bold mb-4">{isAdding ? '创建' : '编辑'}</h4><div className="space-y-4"><input placeholder="案件名称" autoFocus value={editingCase?.name} onChange={(e) => setEditingCase(prev => prev ? {...prev, name: e.target.value} : null)} className="w-full border border-gray-300 rounded p-2 outline-none focus:ring-2 focus:ring-indigo-200" /><textarea placeholder="描述" value={editingCase?.description} onChange={(e) => setEditingCase(prev => prev ? {...prev, description: e.target.value} : null)} className="w-full border border-gray-300 rounded p-2 h-24" /><label className="flex items-center gap-2"><input type="checkbox" checked={editingCase?.isOpen} onChange={(e) => setEditingCase(prev => prev ? {...prev, isOpen: e.target.checked} : null)} /> 启用案件</label></div><div className="flex justify-end gap-3 mt-8"><button onClick={() => { setEditingCase(null); setIsAdding(false); }} className="px-4 py-2 text-gray-600 hover:bg-gray-100">取消</button><button onClick={() => editingCase && saveCase(editingCase)} disabled={!editingCase?.name} className="px-6 py-2 bg-indigo-600 text-white rounded font-bold">保存</button></div></div></div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4"><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-gray-100"><h4 className="text-lg font-bold mb-5">{isAdding ? '创建案件' : '编辑案件'}</h4><div className="space-y-4"><div><label className="text-sm font-bold text-gray-400 mb-1 block">案件名称</label><input placeholder="输入名称" autoFocus value={editingCase?.name} onChange={(e) => setEditingCase(prev => prev ? {...prev, name: e.target.value} : null)} className="w-full border border-gray-300 rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div><div><label className="text-sm font-bold text-gray-400 mb-1 block">详细描述</label><textarea placeholder="可选备注信息" value={editingCase?.description} onChange={(e) => setEditingCase(prev => prev ? {...prev, description: e.target.value} : null)} className="w-full border border-gray-300 rounded px-3 py-2 text-sm h-24 outline-none focus:ring-2 focus:ring-indigo-100" /></div><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editingCase?.isOpen} onChange={(e) => setEditingCase(prev => prev ? {...prev, isOpen: e.target.checked} : null)} className="rounded text-indigo-600" /><span className="text-sm text-gray-600">激活此案件（在首页显示）</span></label></div><div className="flex justify-end gap-3 mt-8 pt-4 border-t"><button onClick={() => { setEditingCase(null); setIsAdding(false); }} className="px-4 py-2 text-sm text-gray-500 font-bold">取消</button><button onClick={() => editingCase && saveCase(editingCase)} disabled={!editingCase?.name} className="px-6 py-2 bg-indigo-600 text-white rounded text-sm font-bold shadow-md hover:bg-indigo-700 disabled:opacity-50">保存</button></div></div></div>
       )}
     </div>
   );
@@ -311,21 +357,21 @@ const WorkTypeManagement: React.FC<{ workTypes: string[]; setWorkTypes: any; sho
   return (
     <div className="flex flex-col h-full">
       <h3 className="text-lg font-bold text-gray-800 mb-6">工作类型管理</h3>
-      <div className="flex gap-2 mb-6"><input type="text" placeholder="新类型" value={newType} onChange={(e) => setNewType(e.target.value)} className="flex-grow border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-200 outline-none" /><button onClick={() => { if(newType) setWorkTypes((prev:any)=>[...prev, newType]); setNewType(''); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold shadow">添加</button></div>
-      <div className="flex-grow overflow-y-auto">
+      <div className="flex gap-2 mb-6"><input type="text" placeholder="输入新类型名称..." value={newType} onChange={(e) => setNewType(e.target.value)} className="flex-grow border border-gray-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /><button onClick={() => { if(newType) setWorkTypes((prev:any)=>[...prev, newType]); setNewType(''); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold text-sm shadow hover:bg-indigo-700">添加</button></div>
+      <div className="flex-grow overflow-y-auto custom-scrollbar pr-2">
         {workTypes.map((type, index) => (
-          <div key={type + index} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl mb-2 group">
+          <div key={type + index} className="flex items-center justify-between p-3 bg-gray-50/50 border border-gray-100 rounded-lg mb-2 group">
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-400 font-mono w-4">{index + 1}.</span>
+              <span className="text-[10px] text-gray-400 font-mono w-4">{index + 1}.</span>
               <div className="flex items-center gap-2">
-                <span className="font-medium text-gray-700">{type}</span>
-                {index === 0 && <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-bold border border-indigo-200">默认值</span>}
+                <span className="font-medium text-gray-700 text-sm">{type}</span>
+                {index === 0 && <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-black border border-indigo-200">默认</span>}
               </div>
             </div>
             <div className="flex gap-1">
-              <button onClick={() => moveType(index, 'up')} disabled={index === 0} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-gray-100 transition-all"><Icons.ArrowUp className="w-4 h-4" /></button>
-              <button onClick={() => moveType(index, 'down')} disabled={index === workTypes.length - 1} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded-lg hover:bg-gray-100 transition-all"><Icons.ArrowDown className="w-4 h-4" /></button>
-              <button onClick={() => showConfirm({ title:"删除类型", message:`确定删除 ${type} 吗？`, isDestructive: true, onConfirm: () => setWorkTypes((prev:any)=>prev.filter((_:any, i:any)=>i!==index)) })} className="p-1.5 text-red-400 hover:text-red-600 rounded-lg hover:bg-gray-100 transition-all ml-1"><Icons.Trash className="w-4 h-4" /></button>
+              <button onClick={() => moveType(index, 'up')} disabled={index === 0} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded hover:bg-gray-200 transition-colors"><Icons.ArrowUp className="w-4 h-4" /></button>
+              <button onClick={() => moveType(index, 'down')} disabled={index === workTypes.length - 1} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded hover:bg-gray-200 transition-colors"><Icons.ArrowDown className="w-4 h-4" /></button>
+              <button onClick={() => showConfirm({ title:"删除类型", message:`确定要删除类型 "${type}" 吗？`, isDestructive: true, onConfirm: () => setWorkTypes((prev:any)=>prev.filter((_:any, i:any)=>i!==index)) })} className="p-1.5 text-red-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors ml-1"><Icons.Trash className="w-4 h-4" /></button>
             </div>
           </div>
         ))}
@@ -356,7 +402,7 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
   }, [entries, selectedCaseId, sortField, sortOrder, cases]);
 
   const handleAddManual = () => {
-    if (openCases.length === 0) { window.alert("请先创建并打开一个案件。"); return; }
+    if (openCases.length === 0) { window.alert("请先创建并打开至少一个案件。"); return; }
     const now = Date.now();
     const startTime = now - (10 * 60 * 1000);
     const newEntry: TimeEntry = { id: generateId('REC-'), caseId: openCases[0].id, workType: workTypes[0] || '会议', workContent: '', notes: '', startTime, endTime: now, duration: 10 };
@@ -367,33 +413,54 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex justify-between items-center mb-6 shrink-0"><div className="flex gap-3"><select value={selectedCaseId} onChange={(e) => setSelectedCaseId(e.target.value)} className="border rounded px-4 py-2 bg-white text-sm"><option value="">所有记录</option>{cases.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><button onClick={handleAddManual} className="flex items-center gap-1 text-indigo-600 border border-indigo-600 px-3 py-1.5 rounded-lg font-bold text-xs"><Icons.Plus /> 手动添加</button></div>{batchSelection.length > 0 && <button onClick={() => showConfirm({ title:"删除", message:`删除选中的 ${batchSelection.length} 条？`, isDestructive:true, onConfirm:()=> { setEntries((p:any)=>p.filter((e:any)=>!batchSelection.includes(e.id))); setBatchSelection([]); } })} className="bg-red-50 text-red-600 border border-red-500 px-4 py-1.5 rounded-lg text-xs font-black shadow-sm">删除选中</button>}</div>
-      <div className="flex-grow border border-gray-100 rounded-xl bg-white overflow-y-auto">
-        <table className="w-full text-left text-sm table-fixed">
-          <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] font-bold sticky top-0">
+      <div className="flex justify-between items-center mb-5 shrink-0">
+        <div className="flex gap-2">
+          <select value={selectedCaseId} onChange={(e) => setSelectedCaseId(e.target.value)} className="border rounded px-3 py-1.5 bg-white text-sm outline-none focus:ring-2 focus:ring-indigo-100 font-medium"><option value="">所有案件</option>{cases.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <button onClick={handleAddManual} className="flex items-center gap-1 text-indigo-600 border-2 border-indigo-600 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-indigo-50"><Icons.Plus className="w-4 h-4" /> 手动添加</button>
+        </div>
+        {batchSelection.length > 0 && <button onClick={() => showConfirm({ title:"批量删除确认", message:`确定要删除选中的 ${batchSelection.length} 条记录吗？此操作无法撤销。`, isDestructive:true, onConfirm:()=> { setEntries((p:any)=>p.filter((e:any)=>!batchSelection.includes(e.id))); setBatchSelection([]); } })} className="bg-red-50 text-red-600 border border-red-200 px-4 py-1.5 rounded-lg text-xs font-black hover:bg-red-100 shadow-sm transition-colors">删除选中</button>}
+      </div>
+      <div className="flex-grow border border-gray-100 rounded-xl bg-white overflow-y-auto custom-scrollbar shadow-inner">
+        <table className="w-full text-left table-fixed border-collapse">
+          <thead className="bg-gray-50/90 backdrop-blur-sm text-gray-500 uppercase text-[11px] font-black sticky top-0 shadow-sm z-20">
             <tr>
-              <th className="px-4 py-3 w-10"><input type="checkbox" onChange={e => setBatchSelection(e.target.checked ? sortedEntries.filter(i=>i.endTime!==null).map(i=>i.id) : [])} checked={batchSelection.length > 0 && batchSelection.length === sortedEntries.filter(i=>i.endTime!==null).length} /></th>
-              <th className="px-4 py-3 w-[20%]">案件</th>
-              <th className="px-4 py-3 w-[110px]">类型</th>
-              <th className="px-4 py-3 w-[130px]">时间</th>
-              <th className="px-4 py-3 w-[70px]">时长</th>
-              <th className="px-4 py-3 w-[60px]">操作</th>
+              <th className="px-4 py-3 w-10 text-center"><input type="checkbox" className="rounded" onChange={e => setBatchSelection(e.target.checked ? sortedEntries.filter(i=>i.endTime!==null).map(i=>i.id) : [])} checked={batchSelection.length > 0 && batchSelection.length === sortedEntries.filter(i=>i.endTime!==null).length} /></th>
+              <th className="px-4 py-3 w-[25%] cursor-pointer hover:text-indigo-600" onClick={() => { setSortField('case'); setSortOrder(p=>p==='asc'?'desc':'asc'); }}>案件 {sortField === 'case' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
+              <th className="px-4 py-3 w-[90px]">工作类型</th>
+              <th className="px-4 py-3 w-[130px] cursor-pointer hover:text-indigo-600" onClick={() => { setSortField('time'); setSortOrder(p=>p==='asc'?'desc':'asc'); }}>时间记录 {sortField === 'time' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
+              <th className="px-4 py-3 w-[70px] text-right">时长</th>
+              <th className="px-4 py-3 w-[60px] text-center">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-50">
             {sortedEntries.map(e => {
               const c = cases.find(i => i.id === e.caseId);
               const isActive = e.endTime === null;
               const currentLiveDuration = isActive ? formatLiveDuration(e.startTime) : '';
-              const tooltipText = (c ? (c.description || c.name) : '未知案件') + (isActive ? ` [当前已计时: ${currentLiveDuration}]` : '');
+              const tooltipText = (c ? (c.description || c.name) : '未知') + (isActive ? ` [计时中: ${currentLiveDuration}]` : '');
               return (
-                <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3"><input type="checkbox" disabled={e.endTime===null} checked={batchSelection.includes(e.id)} onChange={()=>setBatchSelection(p=>p.includes(e.id)?p.filter(i=>i!==e.id):[...p,e.id])} /></td>
-                  <td className="px-4 py-3 font-medium"><Tooltip text={tooltipText} className="w-full"><span className="cursor-help block truncate">{c?.name}</span></Tooltip></td>
-                  <td className="px-4 py-3 truncate">{e.workType}</td>
-                  <td className="px-4 py-3 text-[10px] text-gray-500 font-mono">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
-                  <td className="px-4 py-3 font-bold text-indigo-600">{isActive ? <Tooltip text={`正在计时: ${currentLiveDuration}`}><span className="flex items-center gap-1 cursor-help"><Icons.Clock className="animate-spin w-3 h-3" />{currentLiveDuration}</span></Tooltip> : formatDurationDisplay(e.duration)}</td>
-                  <td className="px-4 py-3"><button onClick={()=>{setIsNewRecord(false);setEditingEntry(e)}} className="text-indigo-600 text-xs">编辑</button></td>
+                <tr key={e.id} className={`hover:bg-gray-50 transition-colors ${isActive ? 'bg-indigo-50/20' : ''}`}>
+                  <td className="px-4 py-3 text-center"><input type="checkbox" className="rounded border-gray-300" disabled={isActive} checked={batchSelection.includes(e.id)} onChange={()=>setBatchSelection(p=>p.includes(e.id)?p.filter(i=>i!==e.id):[...p,e.id])} /></td>
+                  <td className="px-4 py-3 font-medium min-w-0">
+                    <Tooltip text={tooltipText} className="w-full">
+                      <span className="cursor-help block truncate text-xs text-gray-700">{c?.name}</span>
+                    </Tooltip>
+                  </td>
+                  <td className="px-4 py-3 truncate text-[11px] text-gray-500">{e.workType}</td>
+                  <td className="px-4 py-3 text-[10px] text-gray-400 font-mono leading-tight whitespace-nowrap">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
+                  <td className="px-4 py-3 font-bold text-indigo-600 text-right text-xs">
+                    {isActive ? (
+                      <Tooltip text={`正在自动计时: ${currentLiveDuration}`}>
+                        <span className="flex items-center justify-end gap-1 cursor-help">
+                          <Icons.Clock className="animate-spin w-3 h-3 text-indigo-400" />
+                          <span className="tabular-nums">{currentLiveDuration}</span>
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      formatDurationDisplay(e.duration)
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-center"><button onClick={()=>{setIsNewRecord(false);setEditingEntry(e)}} className="text-indigo-600 text-[11px] font-bold hover:underline">编辑</button></td>
                 </tr>
               );
             })}
@@ -401,7 +468,7 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
         </table>
       </div>
       {editingEntry && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4"><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md"><h4 className="text-lg font-bold mb-4">{isNewRecord ? '添加' : '编辑'}</h4><div className="space-y-4"><div><label className="text-xs font-bold text-gray-500">案件</label><select value={editingEntry.caseId} disabled={!isNewRecord} onChange={e=>setEditingEntry({...editingEntry, caseId: e.target.value})} className="w-full border p-2 rounded">{ (isNewRecord ? openCases : cases).map(c=><option key={c.id} value={c.id}>{c.name}</option>) }</select></div><EditableSelect value={editingEntry.workType} onChange={v=>setEditingEntry({...editingEntry, workType: v})} options={workTypes} placeholder="工作类型" /><input placeholder="工作内容" value={editingEntry.workContent} onChange={e=>setEditingEntry({...editingEntry, workContent: e.target.value})} className="w-full border p-2 rounded text-sm" /><div className="grid grid-cols-2 gap-4"><div><label className="text-xs">开始</label><input type="datetime-local" value={safeToISO(editingEntry.startTime)} onChange={e => { const ts = new Date(e.target.value).getTime(); if(ts) setEditingEntry({...editingEntry, startTime: ts, duration: calculateDuration(ts, editingEntry.endTime)})}} className="w-full border p-1 text-xs" /></div><div><label className="text-xs">结束</label><input type="datetime-local" value={safeToISO(editingEntry.endTime)} onChange={e => { const ts = new Date(e.target.value).getTime(); if(ts) setEditingEntry({...editingEntry, endTime: ts, duration: calculateDuration(editingEntry.startTime, ts)})}} className="w-full border p-1 text-xs" /></div></div></div><div className="flex justify-end gap-3 mt-8"><button onClick={()=>setEditingEntry(null)} className="px-4 py-2 text-gray-400">取消</button><button onClick={()=>{ setEntries((prev:any)=>prev.map((i:any)=>i.id===editingEntry.id?editingEntry:i)); setEditingEntry(null); }} className="px-6 py-2 bg-indigo-600 text-white rounded font-bold">保存</button></div></div></div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4"><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm border border-gray-200"><h4 className="text-base font-bold text-gray-800 mb-6">{isNewRecord ? '手动添加记录' : '修改计时记录'}</h4><div className="space-y-4"><div><label className="text-sm font-bold text-gray-400 mb-1 block">归属案件</label><select value={editingEntry.caseId} disabled={!isNewRecord} onChange={e=>setEditingEntry({...editingEntry, caseId: e.target.value})} className="w-full border border-gray-300 p-2 rounded bg-gray-50 text-sm outline-none">{ (isNewRecord ? openCases : cases).map(c=><option key={c.id} value={c.id}>{c.name}</option>) }</select></div><div className="grid grid-cols-2 gap-4"><div><label className="text-sm font-bold text-gray-400 mb-1 block">工作类型</label><EditableSelect value={editingEntry.workType} onChange={v=>setEditingEntry({...editingEntry, workType: v})} options={workTypes} placeholder="选择类型" /></div><div><label className="text-sm font-bold text-gray-400 mb-1 block">统计时长 (分)</label><input type="number" readOnly value={editingEntry.duration} className="w-full border border-gray-300 bg-gray-50 p-2 rounded text-sm text-gray-400" /></div></div><div><label className="text-sm font-bold text-gray-400 mb-1 block">工作内容</label><input placeholder="输入详情..." value={editingEntry.workContent} onChange={e=>setEditingEntry({...editingEntry, workContent: e.target.value})} className="w-full border border-gray-300 px-3 py-2 rounded text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div><div><label className="text-sm font-bold text-gray-400 mb-1 block">注释</label><input placeholder="输入备注信息..." value={editingEntry.notes} onChange={e=>setEditingEntry({...editingEntry, notes: e.target.value})} className="w-full border border-gray-300 px-3 py-2 rounded text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div><div className="grid grid-cols-2 gap-4"><div><label className="text-sm font-bold text-gray-400 mb-1 block">起始时间</label><input type="datetime-local" value={safeToISO(editingEntry.startTime)} onChange={e => { const ts = new Date(e.target.value).getTime(); if(ts) setEditingEntry({...editingEntry, startTime: ts, duration: calculateDuration(ts, editingEntry.endTime)})}} className="w-full border border-gray-300 p-1.5 rounded text-[11px]" /></div><div><label className="text-sm font-bold text-gray-400 mb-1 block">结束时间</label><input type="datetime-local" value={safeToISO(editingEntry.endTime)} onChange={e => { const ts = new Date(e.target.value).getTime(); if(ts) setEditingEntry({...editingEntry, endTime: ts, duration: calculateDuration(editingEntry.startTime, ts)})}} className="w-full border border-gray-300 p-1.5 rounded text-[11px]" /></div></div></div><div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100"><button onClick={()=>setEditingEntry(null)} className="px-4 py-2 text-sm text-gray-400 font-bold font-medium transition-colors hover:text-gray-600">取消</button><button onClick={()=>{ setEntries((prev:any)=>prev.map((i:any)=>i.id===editingEntry.id?editingEntry:i)); setEditingEntry(null); }} className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow hover:bg-indigo-700 transition-all">保存修改</button></div></div></div>
       )}
     </div>
   );
@@ -410,11 +477,10 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
 const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ cases, entries }) => {
   const [startDate, setStartDate] = useState(formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()));
   const [endDate, setEndDate] = useState(formatDate(Date.now()));
-  const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const filtered = useMemo(() => {
     const s = new Date(startDate).getTime(); const e = new Date(endDate).getTime() + 86400000;
-    return entries.filter(item => item.startTime >= s && item.startTime <= e && (selectedCaseIds.length === 0 || selectedCaseIds.includes(item.caseId))).sort((a,b)=>b.startTime-a.startTime);
-  }, [entries, startDate, endDate, selectedCaseIds]);
+    return entries.filter(item => item.startTime >= s && item.startTime <= e).sort((a,b)=>b.startTime-a.startTime);
+  }, [entries, startDate, endDate]);
   const stats = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(e => m.set(e.caseId, (m.get(e.caseId) || 0) + e.duration));
@@ -432,45 +498,43 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
     return { mainRows, summaryRows: stats.map(s => [s.name, '总计', '', '', '', s.total.toString()]) };
   };
   const headers = ['案件', '工作类型', '工作内容', '注释', '起止时间', '时长(m)'];
-  const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Report.csv`); };
-  const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Report.xlsx`); };
+  const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.csv`); };
+  const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
   return (
     <div className="space-y-6 flex flex-col h-full overflow-hidden">
-      <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 grid grid-cols-2 gap-4 shrink-0">
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border rounded p-2 text-sm" />
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded p-2 text-sm" />
+      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex gap-4 shrink-0 shadow-sm">
+        <div className="flex flex-col gap-1.5 flex-1"><label className="text-sm font-bold text-gray-400">起始日期</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div>
+        <div className="flex flex-col gap-1.5 flex-1"><label className="text-sm font-bold text-gray-400">截止日期</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div>
       </div>
-      <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold">CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold">XLSX</button></div></div>
-      <div className="grid grid-cols-4 gap-4 shrink-0">
+      <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">统计报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button></div></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 shrink-0 overflow-x-auto pb-1 custom-scrollbar">
         {stats.map(s => {
           const c = cases.find(item => item.id === s.id);
           const activeEntryForCase = entries.find(e => e.caseId === s.id && e.endTime === null);
           const liveDurationText = activeEntryForCase ? formatLiveDuration(activeEntryForCase.startTime) : '';
-          const tooltipText = (c?.description || c?.name || '未知') + (activeEntryForCase ? ` [当前已计时: ${liveDurationText}]` : '');
+          const tooltipText = (c?.description || c?.name || '未知') + (activeEntryForCase ? ` [计时中: ${liveDurationText}]` : '');
           return (
             <Tooltip key={s.id} text={tooltipText}>
-              <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 h-full cursor-help">
-                <p className="text-[9px] text-indigo-400 font-bold truncate">{s.name}</p>
+              <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 h-full cursor-help min-w-0 transition-all hover:bg-indigo-100 shadow-sm min-w-[120px]">
+                <p className="text-[10px] text-indigo-400 font-bold truncate tracking-tight mb-1">{s.name}</p>
                 <div className="flex items-baseline gap-1">
-                  <p className="text-lg font-black text-indigo-700">{formatDurationDisplay(s.total)}</p>
-                  {activeEntryForCase && (
-                    <span className="text-[10px] text-red-500 animate-pulse font-bold">+计</span>
-                  )}
+                  <p className="text-lg font-black text-indigo-700 tabular-nums">{formatDurationDisplay(s.total)}</p>
+                  {activeEntryForCase && <span className="text-[9px] text-red-500 animate-pulse font-black px-1.5 py-0.5 bg-white rounded-full border border-red-100">+计</span>}
                 </div>
               </div>
             </Tooltip>
           );
         })}
       </div>
-      <div className="border border-gray-100 rounded-xl bg-white flex-grow overflow-y-auto">
-        <table className="w-full text-left text-xs table-fixed">
-          <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[9px] sticky top-0">
+      <div className="border border-gray-100 rounded-xl bg-white flex-grow overflow-y-auto custom-scrollbar shadow-sm">
+        <table className="w-full text-left table-fixed border-collapse">
+          <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[11px] sticky top-0 z-10 border-b border-gray-100 shadow-sm">
             <tr>
-              <th className="px-4 py-3 w-[25%]">案件</th>
+              <th className="px-4 py-3 w-[30%]">案件</th>
               <th className="px-4 py-3 w-[100px]">类型</th>
-              <th className="px-4 py-3 w-[130px]">时间</th>
-              <th className="px-4 py-3 w-[70px] text-right">时长</th>
-              <th className="px-4 py-3">内容</th>
+              <th className="px-4 py-3 w-[130px]">时间范围</th>
+              <th className="px-4 py-3 w-[80px] text-right">时长</th>
+              <th className="px-4 py-3">工作内容</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -478,29 +542,29 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
               const c = cases.find(i => i.id === e.caseId);
               const isActive = e.endTime === null;
               const currentLiveDuration = isActive ? formatLiveDuration(e.startTime) : '';
-              const tooltipText = (c?.description || c?.name || '未知') + (isActive ? ` [当前已计时: ${currentLiveDuration}]` : '');
+              const tooltipText = (c ? (c.description || c.name) : '未知') + (isActive ? ` [正在计时: ${currentLiveDuration}]` : '');
               return (
-                <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-semibold">
+                <tr key={e.id} className="hover:bg-gray-50/80 transition-colors">
+                  <td className="px-4 py-3 font-semibold min-w-0">
                     <Tooltip text={tooltipText} className="w-full">
-                      <span className="cursor-help block truncate">{c?.name}</span>
+                      <span className="cursor-help block truncate text-[12px] text-gray-700">{c?.name}</span>
                     </Tooltip>
                   </td>
-                  <td className="px-4 py-3 truncate">{e.workType}</td>
-                  <td className="px-4 py-3 text-gray-500 font-mono text-[9px]">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-indigo-600">
+                  <td className="px-4 py-3 truncate text-xs text-gray-500">{e.workType}</td>
+                  <td className="px-4 py-3 text-[10px] text-gray-400 font-mono leading-tight whitespace-nowrap">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
+                  <td className="px-4 py-3 text-right font-bold text-indigo-600 text-xs">
                     {isActive ? (
-                      <Tooltip text={`正在计时: ${currentLiveDuration}`}>
+                      <Tooltip text={`正在自动计时: ${currentLiveDuration}`}>
                         <span className="flex items-center justify-end gap-1 cursor-help">
-                          <Icons.Clock className="animate-spin w-3 h-3" />
-                          {currentLiveDuration}
+                          <Icons.Clock className="animate-spin w-3 h-3 text-indigo-400" />
+                          <span className="tabular-nums">{currentLiveDuration}</span>
                         </span>
                       </Tooltip>
                     ) : (
                       formatDurationDisplay(e.duration)
                     )}
                   </td>
-                  <td className="px-4 py-3 truncate text-gray-400">{e.workContent}</td>
+                  <td className="px-4 py-3 truncate text-gray-400 text-xs italic">{e.workContent || '-'}</td>
                 </tr>
               );
             })}
@@ -516,60 +580,65 @@ const SystemManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
     const file = e.target.files?.[0]; if (!file) return;
     try {
       const text = await file.text(); const parsed = JSON.parse(text);
-      if (parsed && Array.isArray(parsed.cases)) { showConfirm({ title: "恢复数据", message: "确定覆盖现有数据吗？", isDestructive: true, onConfirm: () => { setCases(parsed.cases); setEntries(parsed.entries); if(parsed.workTypes) setWorkTypes(parsed.workTypes); } }); }
-    } catch (err) { window.alert("读取失败"); } finally { e.target.value = ''; }
+      if (parsed && Array.isArray(parsed.cases)) { showConfirm({ title: "恢复数据确认", message: "导入备份将永久覆盖您当前浏览器中的所有计时记录和设置。此操作不可撤销，是否继续？", isDestructive: true, confirmText: "开始恢复", onConfirm: () => { setCases(parsed.cases); setEntries(parsed.entries); if(parsed.workTypes) setWorkTypes(parsed.workTypes); } }); }
+    } catch (err) { window.alert("读取失败：请上传有效的 .json 备份文件。"); } finally { e.target.value = ''; }
   };
 
   const intervals = [
-    { label: '关闭', value: 0 },
-    { label: '每15分钟', value: 15 },
-    { label: '每30分钟', value: 30 },
-    { label: '每1小时', value: 60 },
-    { label: '每4小时', value: 240 },
-    { label: '每12小时', value: 720 },
+    { label: '禁用', value: 0 },
+    { label: '15分', value: 15 },
+    { label: '30分', value: 30 },
+    { label: '1小时', value: 60 },
+    { label: '4小时', value: 240 },
+    { label: '12小时', value: 720 },
     { label: '每天', value: 1440 },
   ];
 
   return (
     <div className="max-w-2xl mx-auto py-6 space-y-8">
-      {/* 定时备份配置 */}
-      <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-lg font-bold text-indigo-900">自动定时备份</h4>
-          <span className={`px-2 py-1 rounded text-xs font-bold ${backupSettings.interval > 0 ? 'bg-green-500 text-white' : 'bg-gray-300 text-gray-600'}`}>
-            {backupSettings.interval > 0 ? '已开启' : '已禁用'}
+      <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transform translate-x-4 -translate-y-4"><Icons.Clock style={{ width: '140px', height: '140px' }} /></div>
+        <div className="flex items-center justify-between mb-4 relative z-10">
+          <h4 className="text-lg font-bold text-indigo-900 flex items-center gap-2 tracking-tight"><Icons.Clock className="text-indigo-600 w-6 h-6" /> 自动定时备份系统</h4>
+          <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-sm border ${backupSettings.interval > 0 ? 'bg-green-500 text-white border-green-400 animate-pulse' : 'bg-white text-gray-300 border-gray-100'}`}>
+            {backupSettings.interval > 0 ? '运行中' : '已暂停'}
           </span>
         </div>
-        <div className="space-y-4">
-          <p className="text-xs text-indigo-700/70">开启后，应用将在设定的时间间隔自动下载备份文件到您的本地下载目录。</p>
-          <div className="grid grid-cols-3 gap-2">
+        <div className="space-y-5 relative z-10">
+          <p className="text-sm text-indigo-700/70 leading-relaxed font-medium">应用将在设定的时间间隔自动将您的工作数据（案件、工时、配置）下载为本地 JSON 备份文件。建议开启以防止由于浏览器缓存清理导致的意外数据丢失。</p>
+          <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
             {intervals.map(opt => (
               <button
                 key={opt.value}
                 onClick={() => setBackupSettings({ ...backupSettings, interval: opt.value })}
-                className={`px-3 py-2 rounded-lg text-sm transition-all border ${backupSettings.interval === opt.value ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
+                className={`px-1 py-2 rounded-lg text-xs font-bold transition-all border ${backupSettings.interval === opt.value ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}
               >
                 {opt.label}
               </button>
             ))}
           </div>
           {backupSettings.interval > 0 && (
-            <p className="text-[10px] text-indigo-400 font-mono mt-2 italic text-center">
-              上次备份: {formatDateTime(backupSettings.lastBackupTime)} |
-              下次预计: {formatDateTime(backupSettings.lastBackupTime + backupSettings.interval * 60 * 1000)}
-            </p>
+            <div className="bg-white/50 rounded-lg p-3 border border-indigo-100/50">
+              <p className="text-xs text-indigo-400 font-mono italic text-center leading-normal">
+                上次备份成功: {formatDateTime(backupSettings.lastBackupTime)}<br/>
+                预计下次备份: {formatDateTime(backupSettings.lastBackupTime + backupSettings.interval * 60 * 1000)}
+              </p>
+            </div>
           )}
         </div>
       </div>
-
-      <div className="grid grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm text-center">
-          <h4 className="font-bold text-gray-700 mb-4">手动备份数据</h4>
-          <button onClick={() => downloadJson({ cases, entries, workTypes, timestamp: Date.now() }, `Chronos_ManualBackup.json`)} className="w-full bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold shadow-lg hover:bg-indigo-700">立即备份 (JSON)</button>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm text-center hover:shadow-md transition-all group">
+          <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-indigo-600 group-hover:text-white transition-colors text-gray-400"><Icons.ArrowDown className="w-6 h-6" /></div>
+          <h4 className="font-bold text-gray-700 mb-2 text-base">手动导出备份</h4>
+          <p className="text-xs text-gray-400 mb-6 leading-relaxed">即刻导出一份包含当前所有数据的 JSON 格式文件至您的下载目录。</p>
+          <button onClick={() => downloadJson({ cases, entries, workTypes, timestamp: Date.now() }, `Chronos_手动备份_${formatFullTimestamp(Date.now())}.json`)} className="w-full bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:bg-indigo-700 transition-all active:scale-95">下载 JSON 备份</button>
         </div>
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm text-center">
-          <h4 className="font-bold text-gray-700 mb-4">恢复备份文件</h4>
-          <label className="w-full bg-gray-100 border border-gray-300 px-6 py-2 rounded-xl cursor-pointer hover:bg-gray-200 inline-block font-bold text-gray-600">选择并导入<input type="file" accept=".json" onChange={handleRestore} className="hidden" /></label>
+        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm text-center hover:shadow-md transition-all group">
+          <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-amber-500 group-hover:text-white transition-colors text-gray-400"><Icons.ArrowUp className="w-6 h-6" /></div>
+          <h4 className="font-bold text-gray-700 mb-2 text-base">恢复历史数据</h4>
+          <p className="text-xs text-gray-400 mb-6 leading-relaxed">从本地存储的 JSON 备份文件中恢复案件状态和历史计时记录。</p>
+          <label className="w-full bg-gray-100 border-2 border-dashed border-gray-200 text-gray-500 px-6 py-2 rounded-xl cursor-pointer hover:bg-gray-200 hover:border-gray-400 inline-block font-bold text-sm transition-all active:scale-95">浏览本地文件<input type="file" accept=".json" onChange={handleRestore} className="hidden" /></label>
         </div>
       </div>
     </div>
