@@ -1,8 +1,20 @@
-
 import React from 'react';
 
 // 为图标组件添加 React.SVGProps<SVGSVGElement> 以允许传递 className 等属性。
 export const Icons = {
+  Logo: (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" {...props}>
+      <defs>
+        <linearGradient id="logo-grad-inner" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6366f1" />
+          <stop offset="100%" stop-color="#4338ca" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="7" fill="url(#logo-grad-inner)" />
+      <circle cx="16" cy="16" r="10" fill="none" stroke="white" stroke-width="2.5" stroke-dasharray="45 15" stroke-linecap="round" opacity="0.4" transform="rotate(-90 16 16)" />
+      <path d="M16 10v6l4 2" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    </svg>
+  ),
   Settings: (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 1 1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
   ),
