@@ -88,11 +88,10 @@ export const downloadXlsx = (headers: string[], rows: string[][], fileName: stri
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "时间报表");
 
-  // Set column widths. 40-50 width is good for viewing time ranges.
+  // Adjusted column widths for the new merged field
   worksheet['!cols'] = [
     { wch: 25 }, // 案件
-    { wch: 12 }, // 类型
-    { wch: 30 }, // 内容
+    { wch: 40 }, // 工作内容 (merged)
     { wch: 30 }, // 注释
     { wch: 45 }, // 起止时间
     { wch: 12 }, // 时长

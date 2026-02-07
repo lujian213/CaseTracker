@@ -509,10 +509,16 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
       if(map.has(key)) { const o = map.get(key); o.duration += e.duration; }
       else { map.set(key, { caseName, workType: e.workType, workContent: e.workContent, notes: e.notes, duration: e.duration, timestamp: e.startTime }); }
     });
-    const mainRows = Array.from(map.values()).map(o => [o.caseName, o.workType, o.workContent, o.notes, '', o.duration.toString()]);
-    return { mainRows, summaryRows: stats.map(s => [s.name, '总计', '', '', '', s.total.toString()]) };
+    const mainRows = Array.from(map.values()).map(o => [
+      o.caseName,
+      `${o.workType} ${o.workContent}`.trim(),
+      o.notes,
+      '',
+      o.duration.toString()
+    ]);
+    return { mainRows, summaryRows: stats.map(s => [s.name, '总计', '', '', s.total.toString()]) };
   };
-  const headers = ['案件', '工作类型', '工作内容', '注释', '起止时间', '时长(m)'];
+  const headers = ['案件', '工作内容', '注释', '起止时间', '时长(m)'];
   const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.csv`); };
   const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
   return (
