@@ -496,31 +496,59 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
     const s = new Date(startDate).getTime(); const e = new Date(endDate).getTime() + 86400000;
     return entries.filter(item => item.startTime >= s && item.startTime <= e).sort((a,b)=>b.startTime-a.startTime);
   }, [entries, startDate, endDate]);
+
   const stats = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(e => m.set(e.caseId, (m.get(e.caseId) || 0) + e.duration));
     return Array.from(m.entries()).map(([id, total]) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total }));
   }, [filtered, cases]);
+
   const prepareData = () => {
     const map = new Map<string, any>();
+
+    // 合并具有相同案件ID、类型、内容和注释的记录
     filtered.forEach(e => {
-      const caseName = cases.find(c=>c.id===e.caseId)?.name || '未知';
-      const key = `${e.caseId}|${e.workType}|${e.workContent}|${e.notes}|${formatDate(e.startTime)}`;
-      if(map.has(key)) { const o = map.get(key); o.duration += e.duration; }
-      else { map.set(key, { caseName, workType: e.workType, workContent: e.workContent, notes: e.notes, duration: e.duration, timestamp: e.startTime }); }
+      const caseName = cases.find(c => c.id === e.caseId)?.name || '未知';
+      const key = `${e.caseId}|${e.workType}|${e.workContent}|${e.notes}`;
+      const timeRangeStr = `${formatDateTime(e.startTime)} - ${formatDateTime(e.endTime)}`;
+
+      if (map.has(key)) {
+        const o = map.get(key);
+        o.duration += e.duration;
+        o.timeRanges.push(timeRangeStr);
+      } else {
+        map.set(key, {
+          caseName,
+          workType: e.workType,
+          workContent: e.workContent,
+          notes: e.notes,
+          duration: e.duration,
+          timeRanges: [timeRangeStr]
+        });
+      }
     });
-    const mainRows = Array.from(map.values()).map(o => [
-      o.caseName,
-      `${o.workType} ${o.workContent}`.trim(),
-      o.notes,
-      '',
-      o.duration.toString()
-    ]);
+
+    const separator = '\n'; // 使用标准换行符，在 downloadCsv 和 downloadXlsx 中将分别处理
+
+    const mainRows = Array.from(map.values()).map(o => {
+      const mergedContent = `${o.workType} ${o.workContent}`.trim();
+      return [
+        o.caseName,
+        mergedContent,
+        o.notes,
+        o.timeRanges.join(separator),
+        o.duration.toString()
+      ];
+    });
+
     return { mainRows, summaryRows: stats.map(s => [s.name, '总计', '', '', s.total.toString()]) };
   };
+
   const headers = ['案件', '工作内容', '注释', '起止时间', '时长(m)'];
+
   const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.csv`); };
   const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
+
   return (
     <div className="space-y-6 flex flex-col h-full overflow-hidden">
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex gap-4 shrink-0 shadow-sm">

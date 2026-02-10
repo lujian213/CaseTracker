@@ -69,9 +69,10 @@ export const downloadCsv = (headers: string[], rows: string[][], fileName: strin
     headers.join(','),
     ...rows.map(row => row.map(cell => {
       const safeValue = (cell === undefined || cell === null) ? '' : String(cell);
+      // 将值用双引号包裹，使其内部的换行符在 Excel 解析时仍然属于同一单元格
       return `"${safeValue.replace(/"/g, '""')}"`;
     }).join(','))
-  ].join('\n');
+  ].join('\r\n'); // 针对 CSV 输出，行间换行符采用 \r\n，以增强在 Windows/Excel 的兼容性
 
   const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -85,10 +86,23 @@ export const downloadCsv = (headers: string[], rows: string[][], fileName: strin
 export const downloadXlsx = (headers: string[], rows: string[][], fileName: string) => {
   const data = [headers, ...rows];
   const worksheet = XLSX.utils.aoa_to_sheet(data);
+
+  // 遍历 Worksheet 中所有的单元格，若包含换行符（\n），为其激活自动换行样式。
+  // 在较新的 SheetJS 及部分解析器中，即便非 Pro 版本也会尽量保留该基础排版样式。
+  Object.keys(worksheet).forEach(cellAddress => {
+    if (cellAddress.startsWith('!')) return;
+    const cell = worksheet[cellAddress];
+    if (cell && cell.t === 's' && typeof cell.v === 'string' && cell.v.includes('\n')) {
+      if (!cell.s) cell.s = {};
+      if (!cell.s.alignment) cell.s.alignment = {};
+      cell.s.alignment.wrapText = true;
+    }
+  });
+
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "时间报表");
 
-  // Adjusted column widths for the new merged field
+  // 调整列宽以适应新合并后的字段
   worksheet['!cols'] = [
     { wch: 25 }, // 案件
     { wch: 40 }, // 工作内容 (merged)
