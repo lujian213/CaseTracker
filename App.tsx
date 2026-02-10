@@ -492,10 +492,27 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
 const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ cases, entries }) => {
   const [startDate, setStartDate] = useState(formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()));
   const [endDate, setEndDate] = useState(formatDate(Date.now()));
-  const filtered = useMemo(() => {
+  const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
+
+  const dateFiltered = useMemo(() => {
     const s = new Date(startDate).getTime(); const e = new Date(endDate).getTime() + 86400000;
     return entries.filter(item => item.startTime >= s && item.startTime <= e).sort((a,b)=>b.startTime-a.startTime);
   }, [entries, startDate, endDate]);
+
+  const availableCases = useMemo(() => {
+    const ids = new Set(dateFiltered.map(e => e.caseId));
+    return cases.filter(c => ids.has(c.id));
+  }, [dateFiltered, cases]);
+
+  useEffect(() => {
+    const availableIds = new Set(availableCases.map(c => c.id));
+    setSelectedCaseIds(prev => prev.filter(id => availableIds.has(id)));
+  }, [availableCases]);
+
+  const filtered = useMemo(() => {
+    if (selectedCaseIds.length === 0) return dateFiltered;
+    return dateFiltered.filter(e => selectedCaseIds.includes(e.caseId));
+  }, [dateFiltered, selectedCaseIds]);
 
   const stats = useMemo(() => {
     const m = new Map<string, number>();
@@ -551,9 +568,37 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
 
   return (
     <div className="space-y-6 flex flex-col h-full overflow-hidden">
-      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex gap-4 shrink-0 shadow-sm">
-        <div className="flex flex-col gap-1.5 flex-1"><label className="text-sm font-bold text-gray-400">起始日期</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div>
-        <div className="flex flex-col gap-1.5 flex-1"><label className="text-sm font-bold text-gray-400">截止日期</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div>
+      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-4 shrink-0 shadow-sm">
+        <div className="flex gap-4">
+          <div className="flex flex-col gap-1.5 flex-1"><label className="text-sm font-bold text-gray-400">起始日期</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div>
+          <div className="flex flex-col gap-1.5 flex-1"><label className="text-sm font-bold text-gray-400">截止日期</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div>
+        </div>
+
+        {availableCases.length > 0 && (
+          <div className="pt-3 border-t border-gray-200 flex flex-col gap-2">
+            <label className="text-sm font-bold text-gray-400">筛选案件 (多选)</label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setSelectedCaseIds([])}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedCaseIds.length === 0 ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-100'}`}
+              >
+                全部案件
+              </button>
+              {availableCases.map(c => {
+                const isSelected = selectedCaseIds.includes(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedCaseIds(prev => isSelected ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
+                  >
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
       <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">统计报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button></div></div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 shrink-0 overflow-x-auto pb-1 custom-scrollbar">
