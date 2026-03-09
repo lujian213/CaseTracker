@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Case, TimeEntry, WorkType, AppData, BackupSettings } from './types';
-import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay } from './utils';
+import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay, formatDateForExport, formatDateTimeForExport, minutesToRoundedHours } from './utils';
 import { Icons } from './constants';
 
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
@@ -520,51 +520,69 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
     return Array.from(m.entries()).map(([id, total]) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total }));
   }, [filtered, cases]);
 
-  const prepareData = () => {
+    const prepareData = () => {
     const map = new Map<string, any>();
 
-    // 合并具有相同案件ID、类型、内容和注释的记录
+    // 合并具有相同案件ID、日期、内容和注释的记录（按 startTime 的日期分组）
     filtered.forEach(e => {
       const caseName = cases.find(c => c.id === e.caseId)?.name || '未知';
-      const key = `${e.caseId}|${e.workType}|${e.workContent}|${e.notes}`;
-      const timeRangeStr = `${formatDateTime(e.startTime)} - ${formatDateTime(e.endTime)}`;
+      const dateKey = formatDateForExport(e.startTime);
+      const mergedContent = `${e.workType} ${e.workContent}`.trim();
+      const key = `${e.caseId}|${dateKey}|${mergedContent}|${e.notes}`;
+
+      const timeRangeObj = { start: e.startTime, end: e.endTime };
+      const timeRangeStr = `${formatDateTimeForExport(e.startTime)} - ${e.endTime ? formatDateTimeForExport(e.endTime) : ''}`;
 
       if (map.has(key)) {
         const o = map.get(key);
-        o.duration += e.duration;
-        o.timeRanges.push(timeRangeStr);
+        // accumulate duration only for completed intervals
+        if (e.endTime !== null) o.duration += e.duration;
+        o.timeRanges.push(timeRangeObj);
       } else {
         map.set(key, {
           caseName,
-          workType: e.workType,
-          workContent: e.workContent,
+          date: dateKey,
+          workContent: mergedContent,
           notes: e.notes,
-          duration: e.duration,
-          timeRanges: [timeRangeStr]
+          duration: e.endTime !== null ? e.duration : 0,
+          timeRanges: [timeRangeObj]
         });
       }
     });
 
-    const separator = '\n'; // 使用标准换行符，在 downloadCsv 和 downloadXlsx 中将分别处理
+    // For each group, sort time ranges by start time, build time range strings joined by \n, and convert minutes to rounded hours
+    const separator = '\n';
+    const mainRows = Array.from(map.values()).map((o:any) => {
+      o.timeRanges.sort((a:any,b:any)=>a.start - b.start);
+      const timeRangesText = o.timeRanges.map((tr:any) => `${formatDateTimeForExport(tr.start)} - ${tr.end ? formatDateTimeForExport(tr.end) : ''}`).join(separator);
+      const roundedHours = minutesToRoundedHours(o.duration);
+      // Ensure one decimal place
+      const roundedHoursStr = roundedHours.toFixed(1);
 
-    const mainRows = Array.from(map.values()).map(o => {
-      const mergedContent = `${o.workType} ${o.workContent}`.trim();
       return [
         o.caseName,
-        mergedContent,
-        o.notes,
-        o.timeRanges.join(separator),
-        o.duration.toString()
+        o.date,
+        o.workContent,
+        roundedHoursStr,
+        timeRangesText,
+        o.notes
       ];
     });
 
-    return { mainRows, summaryRows: stats.map(s => [s.name, '总计', '', '', s.total.toString()]) };
-  };
+    // sort by caseName asc then date asc
+    mainRows.sort((a,b) => {
+      const caseCmp = String(a[0]).localeCompare(String(b[0]));
+      if (caseCmp !== 0) return caseCmp;
+      return String(a[1]).localeCompare(String(b[1]));
+    });
 
-  const headers = ['案件', '工作内容', '注释', '起止时间', '时长(m)'];
+    return { mainRows, summaryRows: stats.map(s => [s.name, '', '', (minutesToRoundedHours(s.total)).toFixed(1), '', '总计']) };
+    };
 
-  const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.csv`); };
-  const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
+    const headers = ['案件名称', '日期', '工作内容', '时长(小时)', '起止时间', '注释'];
+
+    const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.csv`); };
+    const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
 
   return (
     <div className="space-y-6 flex flex-col h-full overflow-hidden">
