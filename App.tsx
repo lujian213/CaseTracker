@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Case, TimeEntry, WorkType, AppData, BackupSettings } from './types';
 import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay, formatDateForExport, formatDateTimeForExport, minutesToRoundedHours } from './utils';
@@ -576,7 +575,16 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
       return String(a[1]).localeCompare(String(b[1]));
     });
 
-    return { mainRows, summaryRows: stats.map(s => [s.name, '', '', (minutesToRoundedHours(s.total)).toFixed(1), '', '总计']) };
+    // Build per-case summary by summing each group's rounded hours
+    const caseSummary = new Map<string, number>();
+    Array.from(map.values()).forEach((o:any) => {
+      const rounded = minutesToRoundedHours(o.duration);
+      caseSummary.set(o.caseName, (caseSummary.get(o.caseName) || 0) + rounded);
+    });
+
+    const summaryRows = Array.from(caseSummary.entries()).map(([caseName, hours]) => ([caseName, '', '', hours.toFixed(1), '', '总计']));
+
+    return { mainRows, summaryRows };
     };
 
     const headers = ['案件名称', '日期', '工作内容', '时长(小时)', '起止时间', '注释'];
