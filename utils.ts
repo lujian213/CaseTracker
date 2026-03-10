@@ -110,6 +110,28 @@ export const downloadXlsx = (headers: string[], rows: string[][], fileName: stri
   const data = [headers, ...rows];
   const worksheet = XLSX.utils.aoa_to_sheet(data);
 
+  // Convert duration column (4th column, index 3) to numeric cells with one decimal place
+  try {
+    // Ensure we have a valid range
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    const durationCol = 3; // zero-based index for the '时长(小时)' column
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) { // start from row after headers
+      const cellAddress = { c: durationCol, r: R };
+      const addr = XLSX.utils.encode_cell(cellAddress);
+      const cell = worksheet[addr];
+      if (!cell) continue;
+      // cell.v may be a string like "1.2" or contain non-numeric; try parse
+      const raw = cell.v;
+      const num = typeof raw === 'number' ? raw : parseFloat(String(raw).toString().replace(/,/g, ''));
+      if (!isNaN(num)) {
+        worksheet[addr] = { t: 'n', v: num, z: '0.0' } as any;
+      }
+    }
+  } catch (err) {
+    // ignore conversion errors and fallback to original sheet
+    console.warn('XLSX duration conversion warning:', err);
+  }
+
   // 遍历 Worksheet 中所有的单元格，若包含换行符（\n），为其激活自动换行样式。
   Object.keys(worksheet).forEach(cellAddress => {
     if (cellAddress.startsWith('!')) return;
