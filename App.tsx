@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Case, TimeEntry, WorkType, AppData, BackupSettings } from './types';
-import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay, formatDateForExport, formatDateTimeForExport, minutesToRoundedHours } from './utils';
+import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay, formatDateForExport, formatDateTimeForExport, minutesToRoundedHours, formatDateForBillExport } from './utils';
 import { Icons } from './constants';
 
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
@@ -592,6 +592,140 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
     const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.csv`); };
     const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
 
+    // 新增：导出账单报表功能
+    const handleBillExport = () => {
+      // 过滤掉没有截止时间的记录
+      const completedRecords = filtered.filter(item => item.endTime !== null);
+
+      // 按案件名称和日期分组
+      const groupedData = new Map<string, TimeEntry[]>();
+
+      completedRecords.forEach(entry => {
+        const caseName = cases.find(c => c.id === entry.caseId)?.name || '未知';
+        const dateKey = formatDateForBillExport(entry.startTime); // 使用新的日期格式
+        const groupKey = `${caseName}|${dateKey}`;
+
+        if (!groupedData.has(groupKey)) {
+          groupedData.set(groupKey, []);
+        }
+        groupedData.get(groupKey)?.push(entry);
+      });
+
+      // 第一步合并：对于每个分组里工作内容和注释完全相同的记录进行合并
+      const firstLevelMerged = new Map<string, TimeEntry[]>();
+
+      groupedData.forEach((entries, groupKey) => {
+        const processedEntries: TimeEntry[] = [];
+        const groupedByKey = new Map<string, TimeEntry[]>();
+
+        // 按照工作内容和注释进行分组
+        entries.forEach(entry => {
+          const key = `${entry.workType}|${entry.workContent}|${entry.notes}`;
+          if (!groupedByKey.has(key)) {
+            groupedByKey.set(key, []);
+          }
+          groupedByKey.get(key)?.push(entry);
+        });
+
+        // 对于相同工作内容和注释的记录进行合并
+        groupedByKey.forEach(subGroup => {
+          if (subGroup.length === 1) {
+            processedEntries.push(subGroup[0]);
+          } else {
+            // 合并时长相加（使用分钟级的时长）
+            const totalDuration = subGroup.reduce((sum, entry) => sum + entry.duration, 0);
+
+            // 创建合并后的记录（使用第一条记录的信息，更新时长）
+            const mergedEntry: TimeEntry = {
+              ...subGroup[0],
+              duration: totalDuration,
+              id: generateId('merged_')
+            };
+            processedEntries.push(mergedEntry);
+          }
+        });
+
+        firstLevelMerged.set(groupKey, processedEntries);
+      });
+
+      // 第二步合并：将每个分组里的记录合并成一条记录
+      const finalData: string[][] = [];
+
+      firstLevelMerged.forEach((entries, groupKey) => {
+        if (entries.length === 1) {
+          // 如果只有一个记录，直接使用
+          const entry = entries[0];
+          const caseName = cases.find(c => c.id === entry.caseId)?.name || '未知';
+          const dateKey = formatDateForBillExport(entry.startTime); // 使用新的日期格式
+          const workContent = `${entry.workType} ${entry.workContent}`.trim();
+          const durationHours = minutesToRoundedHours(entry.duration); // 最终显示时才转换为小时
+
+          finalData.push([
+            caseName,
+            dateKey,
+            workContent,
+            durationHours.toFixed(1)
+          ]);
+        } else {
+          // 多个记录合并成一条
+          const firstEntry = entries[0];
+          const caseName = cases.find(c => c.id === firstEntry.caseId)?.name || '未知';
+          const dateKey = formatDateForBillExport(firstEntry.startTime); // 使用新的日期格式
+
+          // 合并工作内容："{工作内容}({时长})"，这里应该用转换后的小时值
+          const workContentDetails = entries.map(entry => {
+            const workContent = `${entry.workType} ${entry.workContent}`.trim();
+            const durationHours = minutesToRoundedHours(entry.duration); // 先转换为小时
+            return `${workContent}(${durationHours.toFixed(1)})`;
+          }).join('; ');
+
+          // 第二次合并时长：应该使用第一次合并后转换成小时的时长来合并（向上取整后的小时相加）
+          const totalHours = entries.reduce((sum, entry) => {
+            const roundedHours = minutesToRoundedHours(entry.duration);
+            return sum + roundedHours;
+          }, 0);
+
+          finalData.push([
+            caseName,
+            dateKey,
+            workContentDetails,
+            totalHours.toFixed(1)
+          ]);
+        }
+      });
+
+      // 排序：案件名称+日期升序
+      finalData.sort((a, b) => {
+        const caseCmp = String(a[0]).localeCompare(String(b[0]));
+        if (caseCmp !== 0) return caseCmp;
+        return String(a[1]).localeCompare(String(b[1]));
+      });
+
+      // 统计每案的总时长
+      const caseTotals = new Map<string, number>();
+      finalData.forEach(row => {
+        const caseName = row[0];
+        const duration = parseFloat(row[3]) || 0;
+        caseTotals.set(caseName, (caseTotals.get(caseName) || 0) + duration);
+      });
+
+      // 准备表头和数据
+      const billHeaders = ['案件名称', '日期', '工作内容', '时长(小时)'];
+      const summaryRows = Array.from(caseTotals.entries()).map(([caseName, totalHours]) => [
+        caseName,
+        '',
+        '总计',
+        totalHours.toFixed(1)
+      ]);
+
+      // 导出Excel文件
+      downloadXlsx(
+        billHeaders,
+        [...finalData, [], ...summaryRows],
+        `Chronos_账单报表_${formatFullTimestamp(Date.now())}.xlsx`
+      );
+    };
+
   return (
     <div className="space-y-6 flex flex-col h-full overflow-hidden">
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-4 shrink-0 shadow-sm">
@@ -626,7 +760,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
           </div>
         )}
       </div>
-      <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">统计报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button></div></div>
+      <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">统计报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button><button onClick={handleBillExport} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-amber-700 shadow-sm transition-colors">导出账单报表</button></div></div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 shrink-0 overflow-x-auto pb-1 custom-scrollbar">
         {stats.map(s => {
           const c = cases.find(item => item.id === s.id);

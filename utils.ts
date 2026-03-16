@@ -34,6 +34,16 @@ export const formatDateForExport = (timestamp: number): string => {
   return `${year}/${month}/${d}`;
 };
 
+// New: Special date formatter for bill export - format similar to "2-Mar-26"
+export const formatDateForBillExport = (timestamp: number): string => {
+  const date = isNaN(Number(timestamp)) ? new Date() : new Date(timestamp);
+  const day = date.getDate(); // Gets day without leading zero
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthAbbr = months[date.getMonth()];
+  const year = date.getFullYear() % 100; // Gets last 2 digits of year
+  return `${day}-${monthAbbr}-${year}`;
+};
+
 export const formatDateTimeForExport = (timestamp: number | null): string => {
   if (!timestamp || isNaN(Number(timestamp))) return '';
   const date = new Date(timestamp);
