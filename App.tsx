@@ -1119,16 +1119,28 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
   const [startDate, setStartDate] = useState(formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()));
   const [endDate, setEndDate] = useState(formatDate(Date.now()));
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'time' | 'expense'>('time');
 
   const dateFiltered = useMemo(() => {
     const s = new Date(startDate).getTime(); const e = new Date(endDate).getTime() + 86400000;
     return entries.filter(item => item.startTime >= s && item.startTime <= e).sort((a,b)=>b.startTime-a.startTime);
   }, [entries, startDate, endDate]);
 
+  const expenseDateFiltered = useMemo(() => {
+    const s = new Date(startDate).getTime();
+    const e = new Date(endDate).getTime() + 86400000;
+    return expenses.filter(item => item.date >= s && item.date <= e).sort((a,b) => b.date - a.date);
+  }, [expenses, startDate, endDate]);
+
   const availableCases = useMemo(() => {
     const ids = new Set(dateFiltered.map(e => e.caseId));
     return cases.filter(c => ids.has(c.id));
   }, [dateFiltered, cases]);
+
+  const expenseAvailableCases = useMemo(() => {
+    const ids = new Set(expenseDateFiltered.map(e => e.caseId));
+    return cases.filter(c => ids.has(c.id));
+  }, [expenseDateFiltered, cases]);
 
   useEffect(() => {
     const availableIds = new Set(availableCases.map(c => c.id));
@@ -1139,6 +1151,11 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
     if (selectedCaseIds.length === 0) return dateFiltered;
     return dateFiltered.filter(e => selectedCaseIds.includes(e.caseId));
   }, [dateFiltered, selectedCaseIds]);
+
+  const expenseFiltered = useMemo(() => {
+    if (selectedCaseIds.length === 0) return expenseDateFiltered;
+    return expenseDateFiltered.filter(e => selectedCaseIds.includes(e.caseId));
+  }, [expenseDateFiltered, selectedCaseIds]);
 
   const stats = useMemo(() => {
     const m = new Map<string, number>();
@@ -1215,6 +1232,45 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
     };
 
     const headers = ['案件名称', '日期', '工作内容', '时长(小时)', '起止时间', '注释'];
+
+    const prepareExpenseData = () => {
+      // 准备费用报表的明细数据
+      const mainRows = expenseFiltered.map(e => {
+        const c = cases.find(i => i.id === e.caseId);
+        return [
+          c?.name || '未知案件',
+          formatDate(e.date),
+          e.type,
+          e.amount, // 保留数值格式用于后续处理
+          e.notes
+        ];
+      });
+
+      // 按案件名称和日期排序
+      mainRows.sort((a, b) => {
+        const caseCmp = String(a[0]).localeCompare(String(b[0]));
+        if (caseCmp !== 0) return caseCmp;
+        return String(a[1]).localeCompare(String(b[1]));
+      });
+
+      // 创建每案件汇总
+      const caseSummary = new Map<string, number>();
+      expenseFiltered.forEach(e => {
+        const c = cases.find(i => i.id === e.caseId);
+        const caseName = c?.name || '未知案件';
+        caseSummary.set(caseName, (caseSummary.get(caseName) || 0) + e.amount);
+      });
+
+      const summaryRows = Array.from(caseSummary.entries()).map(([caseName, total]) => ([
+        caseName,
+        '总计',
+        '',
+        total,
+        ''
+      ]));
+
+      return { mainRows, summaryRows };
+    };
 
     const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.csv`); };
     const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
@@ -1353,6 +1409,43 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
       );
     };
 
+    const handleExpenseExport = () => {
+      const { mainRows, summaryRows } = prepareExpenseData();
+
+      // 格式化金额数据为千分位字符串，并将所有数据转为字符串
+      const formattedMainRows = mainRows.map(row => [
+        String(row[0]), // 案件名称
+        String(row[1]), // 费用日期
+        String(row[2]), // 费用类型
+        typeof row[3] === 'number' ? row[3].toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(row[3]), // 费用金额
+        String(row[4])  // 备注
+      ]);
+
+      const formattedSummaryRows = summaryRows.map(row => [
+        String(row[0]), // 案件名称
+        String(row[1]), // 总计
+        String(row[2]), // 空
+        typeof row[3] === 'number' ? row[3].toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(row[3]), // 费用总计
+        String(row[4])  // 空
+      ]);
+
+      const expenseHeaders = ['案件名称', '费用日期', '费用类型', '费用金额', '备注'];
+
+      // 将数据组合成单一数组，中间插入空行
+      const allData = [
+        expenseHeaders,
+        ...formattedMainRows,
+        [], // 空行分隔明细和汇总
+        ...formattedSummaryRows
+      ];
+
+      downloadXlsx(
+        [], // 表头已包含在数据中
+        allData,
+        `Chronos_费用报表_${formatFullTimestamp(Date.now())}.xlsx`
+      );
+    };
+
   return (
     <div className="space-y-6 flex flex-col h-full overflow-hidden">
       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-4 shrink-0 shadow-sm">
@@ -1387,7 +1480,47 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
           </div>
         )}
       </div>
-      <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">统计报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button><button onClick={handleBillExport} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm transition-colors">导出账单报表</button></div></div>
+      <div className="flex flex-col gap-4">
+        <div className="flex gap-1 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('time')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg ${
+              activeTab === 'time'
+                ? 'bg-white text-indigo-700 border-t border-l border-r border-gray-200'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            时间记录明细
+          </button>
+          <button
+            onClick={() => setActiveTab('expense')}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg ${
+              activeTab === 'expense'
+                ? 'bg-white text-indigo-700 border-t border-l border-r border-gray-200'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            费用记录明细
+          </button>
+        </div>
+        <div className="flex justify-between items-center shrink-0">
+          <h3 className="text-lg font-bold text-gray-800">
+            {activeTab === 'time' ? '时间记录明细' : '费用记录明细'}
+          </h3>
+          <div className="flex gap-2">
+            {activeTab === 'time' && (
+              <>
+                <button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button>
+                <button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button>
+                <button onClick={handleBillExport} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm transition-colors">导出账单报表</button>
+              </>
+            )}
+            {activeTab === 'expense' && (
+              <button onClick={handleExpenseExport} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-amber-700 shadow-sm transition-colors">导出费用报表</button>
+            )}
+          </div>
+        </div>
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 shrink-0 overflow-x-auto pb-1 custom-scrollbar">
         {stats.map(s => {
           const c = cases.find(item => item.id === s.id);
@@ -1408,49 +1541,83 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
         })}
       </div>
       <div className="border border-gray-100 rounded-xl bg-white flex-grow overflow-y-auto custom-scrollbar shadow-sm">
-        <table className="w-full text-left table-fixed border-collapse">
-          <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[11px] sticky top-0 z-10 border-b border-gray-100 shadow-sm">
-            <tr>
-              <th className="px-4 py-3 w-[30%]">案件</th>
-              <th className="px-4 py-3 w-[100px]">类型</th>
-              <th className="px-4 py-3 w-[130px]">时间范围</th>
-              <th className="px-4 py-3 w-[80px] text-right">时长</th>
-              <th className="px-4 py-3">工作内容</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {filtered.map(e => {
-              const c = cases.find(i => i.id === e.caseId);
-              const isActive = e.endTime === null;
-              const currentLiveDuration = isActive ? formatLiveDuration(e.startTime) : '';
-              const tooltipText = (c ? (c.description || c.name) : '未知') + (isActive ? ` [正在计时: ${currentLiveDuration}]` : '');
-              return (
-                <tr key={e.id} className="hover:bg-gray-50/80 transition-colors">
-                  <td className="px-4 py-3 font-semibold min-w-0">
-                    <Tooltip text={tooltipText} className="w-full">
-                      <span className="cursor-help block truncate text-[12px] text-gray-700">{c?.name}</span>
-                    </Tooltip>
-                  </td>
-                  <td className="px-4 py-3 truncate text-xs text-gray-500">{e.workType}</td>
-                  <td className="px-4 py-3 text-[10px] text-gray-400 font-mono leading-tight whitespace-nowrap">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-indigo-600 text-xs">
-                    {isActive ? (
-                      <Tooltip text={`正在自动计时: ${currentLiveDuration}`}>
-                        <span className="flex items-center justify-end gap-1 cursor-help">
-                          <Icons.Clock className="animate-spin w-3 h-3 text-indigo-400" />
-                          <span className="tabular-nums">{currentLiveDuration}</span>
-                        </span>
+        {activeTab === 'time' && (
+          <table className="w-full text-left table-fixed border-collapse">
+            <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[11px] sticky top-0 z-10 border-b border-gray-100 shadow-sm">
+              <tr>
+                <th className="px-4 py-3 w-[30%]">案件</th>
+                <th className="px-4 py-3 w-[100px]">类型</th>
+                <th className="px-4 py-3 w-[130px]">时间范围</th>
+                <th className="px-4 py-3 w-[80px] text-right">时长</th>
+                <th className="px-4 py-3">工作内容</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.map(e => {
+                const c = cases.find(i => i.id === e.caseId);
+                const isActive = e.endTime === null;
+                const currentLiveDuration = isActive ? formatLiveDuration(e.startTime) : '';
+                const tooltipText = (c ? (c.description || c.name) : '未知') + (isActive ? ` [正在计时: ${currentLiveDuration}]` : '');
+                return (
+                  <tr key={e.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="px-4 py-3 font-semibold min-w-0">
+                      <Tooltip text={tooltipText} className="w-full">
+                        <span className="cursor-help block truncate text-[12px] text-gray-700">{c?.name}</span>
                       </Tooltip>
-                    ) : (
-                      formatDurationDisplay(e.duration)
-                    )}
-                  </td>
-                  <td className="px-4 py-3 truncate text-gray-400 text-xs italic">{e.workContent || '-'}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    </td>
+                    <td className="px-4 py-3 truncate text-xs text-gray-500">{e.workType}</td>
+                    <td className="px-4 py-3 text-[10px] text-gray-400 font-mono leading-tight whitespace-nowrap">{formatDateTime(e.startTime)}<br/>{formatDateTime(e.endTime)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-indigo-600 text-xs">
+                      {isActive ? (
+                        <Tooltip text={`正在自动计时: ${currentLiveDuration}`}>
+                          <span className="flex items-center justify-end gap-1 cursor-help">
+                            <Icons.Clock className="animate-spin w-3 h-3 text-indigo-400" />
+                            <span className="tabular-nums">{currentLiveDuration}</span>
+                          </span>
+                        </Tooltip>
+                      ) : (
+                        formatDurationDisplay(e.duration)
+                      )}
+                    </td>
+                    <td className="px-4 py-3 truncate text-gray-400 text-xs italic">{e.workContent || '-'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+
+        {activeTab === 'expense' && (
+          <table className="w-full text-left table-fixed border-collapse">
+            <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[11px] sticky top-0 z-10 border-b border-gray-100 shadow-sm">
+              <tr>
+                <th className="px-4 py-3 w-[30%] text-left">案件名称</th>
+                <th className="px-4 py-3 w-[100px] text-left">费用日期</th>
+                <th className="px-4 py-3 w-[100px] text-left">费用类型</th>
+                <th className="px-4 py-3 w-[80px] text-right">费用金额</th>
+                <th className="px-4 py-3 text-left">备注</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {expenseFiltered.map(e => {
+                const c = cases.find(i => i.id === e.caseId);
+                return (
+                  <tr key={e.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="px-4 py-3 font-semibold min-w-0 text-left">
+                      <Tooltip text={c?.name || '未知案件'} className="w-full">
+                        <span className="cursor-help block truncate text-[12px] text-gray-700">{c?.name || '未知案件'}</span>
+                      </Tooltip>
+                    </td>
+                    <td className="px-4 py-3 text-left text-[10px] text-gray-400 font-mono leading-tight">{formatDate(e.date)}</td>
+                    <td className="px-4 py-3 truncate text-xs text-gray-500 text-left">{e.type}</td>
+                    <td className="px-4 py-3 text-right font-bold text-indigo-600 text-xs">{e.amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className="px-4 py-3 truncate text-xs text-gray-500 text-left">{e.notes}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
