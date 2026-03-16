@@ -31,9 +31,20 @@ export interface BackupSettings {
   lastBackupTime: number;
 }
 
+export interface ExpenseEntry {
+  id: string;
+  caseId: string;
+  type: string;
+  amount: number;
+  date: number; // timestamp
+  notes: string;
+}
+
 export interface AppData {
   cases: Case[];
   entries: TimeEntry[];
+  expenses: ExpenseEntry[];
   workTypes: string[];
+  expenseTypes: string[];
   backupSettings?: BackupSettings;
 }

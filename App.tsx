@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Case, TimeEntry, WorkType, AppData, BackupSettings } from './types';
+import { Case, TimeEntry, WorkType, AppData, BackupSettings, ExpenseEntry } from './types';
 import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay, formatDateForExport, formatDateTimeForExport, minutesToRoundedHours, formatDateForBillExport } from './utils';
 import { Icons } from './constants';
 
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
 const DEFAULT_WORK_TYPES = Object.values(WorkType);
 
-type AdminTab = 'cases' | 'worktypes' | 'records' | 'reports' | 'system';
+type AdminTab = 'cases' | 'worktypes' | 'records' | 'expenses' | 'reports' | 'system';
 
 type SortField = 'case' | 'type' | 'time' | 'duration';
 type SortOrder = 'asc' | 'desc';
@@ -131,10 +131,22 @@ const ConfirmDialog: React.FC<{ isOpen: boolean; title: string; message: string;
   );
 };
 
+const DEFAULT_EXPENSE_TYPES = ['交通费', '餐饮费', '住宿费', '通讯费', '办公费', '其他'];
+
 const App: React.FC = () => {
   const [cases, setCases] = useState<Case[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
   const [workTypes, setWorkTypes] = useState<string[]>(DEFAULT_WORK_TYPES);
+  const [expenseTypes, setExpenseTypes] = useState<string[]>(DEFAULT_EXPENSE_TYPES);
+  const [activeExpenseForm, setActiveExpenseForm] = useState<{caseId: string} | null>(null);
+  const [newExpense, setNewExpense] = useState<Omit<ExpenseEntry, 'id'>>({
+    caseId: '',
+    type: expenseTypes[0] || '其他',
+    amount: 0,
+    date: Date.now(),
+    notes: ''
+  });
   const [backupSettings, setBackupSettings] = useState<BackupSettings>({ interval: 0, lastBackupTime: Date.now() });
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [adminTab, setAdminTab] = useState<AdminTab>('cases');
@@ -150,15 +162,21 @@ const App: React.FC = () => {
         const parsed: AppData = JSON.parse(stored);
         if (parsed.cases) setCases(parsed.cases);
         if (parsed.entries) setEntries(parsed.entries);
+        if (parsed.expenses) setExpenses(parsed.expenses);
         if (parsed.workTypes) setWorkTypes(parsed.workTypes);
+        if (parsed.expenseTypes) setExpenseTypes(parsed.expenseTypes);
+        else setExpenseTypes(DEFAULT_EXPENSE_TYPES); // Set default if not in stored data
         if (parsed.backupSettings) setBackupSettings(parsed.backupSettings);
       } catch (e) { console.error("数据加载失败", e); }
+    } else {
+      // If no stored data, ensure defaults are set
+      setExpenseTypes(DEFAULT_EXPENSE_TYPES);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ cases, entries, workTypes, backupSettings }));
-  }, [cases, entries, workTypes, backupSettings]);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ cases, entries, expenses, workTypes, expenseTypes, backupSettings }));
+  }, [cases, entries, expenses, workTypes, expenseTypes, backupSettings]);
 
   useEffect(() => {
     const activeEntry = entries.find(e => e.endTime === null);
@@ -192,6 +210,44 @@ const App: React.FC = () => {
     setEntries(prev => [...prev, { id: generateId('REC-'), caseId, workType, workContent, notes, startTime: now, endTime: null, duration: 0 }]);
   }, [stopAllTimers]);
 
+  const addExpense = useCallback((caseId: string) => {
+    const caseInfo = cases.find(c => c.id === caseId);
+    if (!caseInfo) {
+      alert("未找到指定案件");
+      return;
+    }
+
+    const defaultExpense = {
+      caseId,
+      type: expenseTypes[0] || '其他',
+      amount: 0,
+      date: Date.now(),
+      notes: ''
+    };
+
+    setNewExpense(defaultExpense);
+    setActiveExpenseForm({ caseId });
+  }, [cases, expenseTypes]);
+
+  const saveExpense = useCallback(() => {
+    if (newExpense.amount <= 0) {
+      alert("费用金额必须大于0");
+      return;
+    }
+
+    const expenseToAdd: ExpenseEntry = {
+      id: generateId('EXP-'),
+      ...newExpense
+    };
+
+    setExpenses(prev => [...prev, expenseToAdd]);
+    setActiveExpenseForm(null);
+  }, [newExpense]);
+
+  const closeExpenseForm = useCallback(() => {
+    setActiveExpenseForm(null);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8 text-slate-800 font-sans relative">
       <ConfirmDialog {...confirmConfig} onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))} />
@@ -214,21 +270,94 @@ const App: React.FC = () => {
         </button>
       </header>
       <main className="max-w-4xl mx-auto">
-        <Dashboard cases={cases.filter(c => c.isOpen)} entries={entries} workTypes={workTypes} onStart={startTimer} onStop={() => stopAllTimers()} />
+        <Dashboard cases={cases.filter(c => c.isOpen)} entries={entries} workTypes={workTypes} expenseTypes={expenseTypes} onStart={startTimer} onAddExpense={addExpense} onStop={() => stopAllTimers()} />
       </main>
-      {isAdminOpen && <AdminOverlay tab={adminTab} setTab={setAdminTab} onClose={() => setIsAdminOpen(false)} cases={cases} setCases={setCases} entries={entries} setEntries={setEntries} workTypes={workTypes} setWorkTypes={setWorkTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={(c:any) => setConfirmConfig({...c, isOpen:true})} />}
+      {isAdminOpen && <AdminOverlay tab={adminTab} setTab={setAdminTab} onClose={() => setIsAdminOpen(false)} cases={cases} setCases={setCases} entries={entries} setEntries={setEntries} expenses={expenses} setExpenses={setExpenses} workTypes={workTypes} setWorkTypes={setWorkTypes} expenseTypes={expenseTypes} setExpenseTypes={setExpenseTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={(c:any) => setConfirmConfig({...c, isOpen:true})} />}
+
+      {/* Expense Form Modal */}
+      {activeExpenseForm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md border border-gray-200 p-6 relative">
+            <h3 className="text-xl font-bold text-gray-800 mb-5">添加费用</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">费用日期</label>
+                <input
+                  type="date"
+                  value={new Date(newExpense.date).toISOString().split('T')[0]}
+                  onChange={(e) => setNewExpense(prev => ({ ...prev, date: new Date(e.target.value).getTime() }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">费用类型</label>
+                <select
+                  value={newExpense.type}
+                  onChange={(e) => setNewExpense(prev => ({ ...prev, type: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                >
+                  {expenseTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">费用金额</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={newExpense.amount || ''}
+                  onChange={(e) => setNewExpense(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                  placeholder="输入金额"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">备注</label>
+                <textarea
+                  value={newExpense.notes}
+                  onChange={(e) => setNewExpense(prev => ({ ...prev, notes: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-20 outline-none focus:ring-2 focus:ring-indigo-100"
+                  placeholder="可选备注信息"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
+              <button
+                onClick={closeExpenseForm}
+                className="px-4 py-2 text-sm text-gray-500 font-bold"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveExpense}
+                disabled={newExpense.amount <= 0}
+                className="px-6 py-2 bg-indigo-600 text-white rounded text-sm font-bold shadow-md hover:bg-indigo-700 disabled:opacity-50"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const Dashboard: React.FC<{ cases: Case[]; entries: TimeEntry[]; workTypes: string[]; onStart: (id: string, type: string, content: string, notes: string) => void; onStop: () => void; }> = ({ cases, entries, workTypes, onStart, onStop }) => {
+const Dashboard: React.FC<{ cases: Case[]; entries: TimeEntry[]; workTypes: string[]; expenseTypes: string[]; onStart: (id: string, type: string, content: string, notes: string) => void; onAddExpense: (caseId: string) => void; onStop: () => void; }> = ({ cases, entries, workTypes, expenseTypes, onStart, onAddExpense, onStop }) => {
   const activeEntry = entries.find(e => e.endTime === null);
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow-md border border-gray-100 min-h-[320px]">
         <div className="p-1">
-          {cases.length === 0 ? <div className="py-20 text-center text-gray-400"><p>目前没有打开的案件</p><p className="text-sm">点击右上角“管理”按钮创建新案件</p></div> :
-            <div className="divide-y divide-gray-100">{cases.map(c => <CaseRow key={c.id} caseItem={c} workTypes={workTypes} onStart={onStart} activeEntry={activeEntry?.caseId === c.id ? activeEntry : null} />)}</div>}
+          {cases.length === 0 ? <div className="py-20 text-center text-gray-400"><p>目前没有打开的案件</p><p className="text-sm">点击右上角"管理"按钮创建新案件</p></div> :
+            <div className="divide-y divide-gray-100">{cases.map(c => <CaseRow key={c.id} caseItem={c} workTypes={workTypes} expenseTypes={expenseTypes} onStart={onStart} onAddExpense={onAddExpense} activeEntry={activeEntry?.caseId === c.id ? activeEntry : null} />)}</div>}
         </div>
       </div>
       <div className="flex justify-center mt-8">
@@ -240,7 +369,14 @@ const Dashboard: React.FC<{ cases: Case[]; entries: TimeEntry[]; workTypes: stri
   );
 };
 
-const CaseRow: React.FC<{ caseItem: Case; workTypes: string[]; onStart: (id: string, type: string, content: string, notes: string) => void; activeEntry: TimeEntry | null; }> = ({ caseItem, workTypes, onStart, activeEntry }) => {
+const CaseRow: React.FC<{
+  caseItem: Case;
+  workTypes: string[];
+  expenseTypes: string[];
+  onStart: (id: string, type: string, content: string, notes: string) => void;
+  onAddExpense: (caseId: string) => void;
+  activeEntry: TimeEntry | null;
+}> = ({ caseItem, workTypes, expenseTypes, onStart, onAddExpense, activeEntry }) => {
   const [workType, setWorkType] = useState<string>(workTypes[0] || '');
   const [workContent, setWorkContent] = useState('');
   const [notes, setNotes] = useState('');
@@ -294,22 +430,50 @@ const CaseRow: React.FC<{ caseItem: Case; workTypes: string[]; onStart: (id: str
             )}
           </button>
         </Tooltip>
+        <Tooltip text="添加费用记录">
+          <button
+            onClick={() => onAddExpense(caseItem.id)}
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-bold shadow transition-all min-w-[110px] bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95"
+          >
+            <Icons.Plus className="w-4 h-4" /> 添加费用
+          </button>
+        </Tooltip>
       </div>
     </div>
   );
 };
 
-const AdminOverlay: React.FC<{ tab: AdminTab; setTab: (t: AdminTab) => void; onClose: () => void; cases: Case[]; setCases: any; entries: TimeEntry[]; setEntries: any; workTypes: string[]; setWorkTypes: any; backupSettings: BackupSettings; setBackupSettings: any; showConfirm: any; }> = ({ tab, setTab, onClose, cases, setCases, entries, setEntries, workTypes, setWorkTypes, backupSettings, setBackupSettings, showConfirm }) => (
+const AdminOverlay: React.FC<{ tab: AdminTab; setTab: (t: AdminTab) => void; onClose: () => void; cases: Case[]; setCases: any; entries: TimeEntry[]; setEntries: any; expenses: ExpenseEntry[]; setExpenses: any; workTypes: string[]; setWorkTypes: any; expenseTypes: string[]; setExpenseTypes: any; backupSettings: BackupSettings; setBackupSettings: any; showConfirm: any; }> = ({ tab, setTab, onClose, cases, setCases, entries, setEntries, expenses, setExpenses, workTypes, setWorkTypes, expenseTypes, setExpenseTypes, backupSettings, setBackupSettings, showConfirm }) => (
   <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div className="bg-white w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       <div className="border-b border-gray-100 flex justify-between items-center px-6 py-4 bg-gray-50 shrink-0"><h2 className="text-xl font-bold text-gray-800">管理后台</h2><button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button></div>
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-48 border-r border-gray-100 bg-gray-50 flex flex-col p-4 gap-2 shrink-0">{[{ id:'cases', label:'案件管理' },{ id:'worktypes', label:'类型管理' },{ id:'records', label:'记录管理' },{ id:'reports', label:'统计报表' },{ id:'system', label:'备份与恢复' }].map(t => (<button key={t.id} onClick={() => setTab(t.id as AdminTab)} className={`text-left px-4 py-2.5 rounded-lg transition-colors font-bold text-sm ${tab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'}`}>{t.label}</button>))}</div>
+        <div className="w-48 border-r border-gray-100 bg-gray-50 flex flex-col p-4 gap-2 shrink-0">
+          {[
+            { id: 'cases', label: '案件管理' },
+            { id: 'worktypes', label: '类型管理' },
+            { id: 'records', label: '记录管理' },
+            { id: 'expenses', label: '费用管理' },
+            { id: 'reports', label: '统计报表' },
+            { id: 'system', label: '备份与恢复' }
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id as AdminTab)}
+              className={`text-left px-4 py-2.5 rounded-lg transition-colors font-bold text-sm ${
+                tab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
         <div className="flex-1 p-6 bg-white overflow-hidden relative">
           {tab === 'cases' && <CaseManagement cases={cases} setCases={setCases} setEntries={setEntries} showConfirm={showConfirm} />}
-          {tab === 'worktypes' && <WorkTypeManagement workTypes={workTypes} setWorkTypes={setWorkTypes} showConfirm={showConfirm} />}
+          {tab === 'worktypes' && <WorkTypeManagement workTypes={workTypes} setWorkTypes={setWorkTypes} expenseTypes={expenseTypes} setExpenseTypes={setExpenseTypes} showConfirm={showConfirm} />}
           {tab === 'records' && <RecordManagement cases={cases} entries={entries} workTypes={workTypes} setEntries={setEntries} showConfirm={showConfirm} />}
-          {tab === 'reports' && <ReportGeneration cases={cases} entries={entries} />}
+          {tab === 'expenses' && <ExpenseManagement cases={cases} expenses={expenses} setExpenses={setExpenses} expenseTypes={expenseTypes} setExpenseTypes={setExpenseTypes} showConfirm={showConfirm} />}
+          {tab === 'reports' && <ReportGeneration cases={cases} entries={entries} expenses={expenses} />}
           {tab === 'system' && <SystemManagement cases={cases} entries={entries} workTypes={workTypes} setCases={setCases} setEntries={setEntries} setWorkTypes={setWorkTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={showConfirm} />}
         </div>
       </div>
@@ -347,37 +511,500 @@ const CaseManagement: React.FC<{ cases: Case[]; setCases: any; setEntries: any; 
   );
 };
 
-const WorkTypeManagement: React.FC<{ workTypes: string[]; setWorkTypes: any; showConfirm: any; }> = ({ workTypes, setWorkTypes, showConfirm }) => {
-  const [newType, setNewType] = useState('');
-  const moveType = (index: number, direction: 'up' | 'down') => {
+const WorkTypeManagement: React.FC<{ workTypes: string[]; setWorkTypes: any; expenseTypes: string[]; setExpenseTypes: any; showConfirm: any; }> = ({ workTypes, setWorkTypes, expenseTypes, setExpenseTypes, showConfirm }) => {
+  const [activeTab, setActiveTab] = useState<'worktypes' | 'expensetypes'>('worktypes');
+  const [newWorkType, setNewWorkType] = useState('');
+  const [newExpenseType, setNewExpenseType] = useState('');
+
+  const moveWorkType = (index: number, direction: 'up' | 'down') => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     if (newIndex < 0 || newIndex >= workTypes.length) return;
     const updated = [...workTypes];
     [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
     setWorkTypes(updated);
   };
+
+  const moveExpenseType = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= expenseTypes.length) return;
+    const updated = [...expenseTypes];
+    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+    setExpenseTypes(updated);
+  };
+
   return (
     <div className="flex flex-col h-full">
-      <h3 className="text-lg font-bold text-gray-800 mb-6">工作类型管理</h3>
-      <div className="flex gap-2 mb-6"><input type="text" placeholder="输入新类型名称..." value={newType} onChange={(e) => setNewType(e.target.value)} className="flex-grow border border-gray-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /><button onClick={() => { if(newType) setWorkTypes((prev:any)=>[...prev, newType]); setNewType(''); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold text-sm shadow hover:bg-indigo-700">添加</button></div>
-      <div className="flex-grow overflow-y-auto custom-scrollbar pr-2">
-        {workTypes.map((type, index) => (
-          <div key={type + index} className="flex items-center justify-between p-3 bg-gray-50/50 border border-gray-100 rounded-lg mb-2 group">
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] text-gray-400 font-mono w-4">{index + 1}.</span>
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-gray-700 text-sm">{type}</span>
-                {index === 0 && <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-black border border-indigo-200">默认</span>}
+      <h3 className="text-lg font-bold text-gray-800 mb-6">类型管理</h3>
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('worktypes')}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg ${activeTab === 'worktypes' ? 'bg-white text-indigo-700 border-t border-l border-r border-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          工作类型
+        </button>
+        <button
+          onClick={() => setActiveTab('expensetypes')}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg ${activeTab === 'expensetypes' ? 'bg-white text-indigo-700 border-t border-l border-r border-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          费用类型
+        </button>
+      </div>
+
+      {/* Work Types Tab */}
+      {activeTab === 'worktypes' && (
+        <div className="flex flex-col h-full">
+          <div className="flex gap-2 mb-6">
+            <input
+              type="text"
+              placeholder="输入新工作类型名称..."
+              value={newWorkType}
+              onChange={(e) => setNewWorkType(e.target.value)}
+              className="flex-grow border border-gray-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+            />
+            <button
+              onClick={() => {
+                if(newWorkType) setWorkTypes((prev: any) => [...prev, newWorkType]);
+                setNewWorkType('');
+              }}
+              className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold text-sm shadow hover:bg-indigo-700"
+            >
+              添加
+            </button>
+          </div>
+          <div className="flex-grow overflow-y-auto custom-scrollbar pr-2">
+            {workTypes.map((type, index) => (
+              <div key={type + index} className="flex items-center justify-between p-3 bg-gray-50/50 border border-gray-100 rounded-lg mb-2 group">
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-gray-400 font-mono w-4">{index + 1}.</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-700 text-sm">{type}</span>
+                    {index === 0 && <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-black border border-indigo-200">默认</span>}
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => moveWorkType(index, 'up')}
+                    disabled={index === 0}
+                    className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded hover:bg-gray-200 transition-colors"
+                  >
+                    <Icons.ArrowUp className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => moveWorkType(index, 'down')}
+                    disabled={index === workTypes.length - 1}
+                    className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded hover:bg-gray-200 transition-colors"
+                  >
+                    <Icons.ArrowDown className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => showConfirm({
+                      title: "删除类型",
+                      message: `确定要删除工作类型 "${type}" 吗？`,
+                      isDestructive: true,
+                      onConfirm: () => setWorkTypes((prev: any) => prev.filter((_: any, i: any) => i !== index))
+                    })}
+                    className="p-1.5 text-red-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors ml-1"
+                  >
+                    <Icons.Trash className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Expense Types Tab */}
+      {activeTab === 'expensetypes' && (
+        <div className="flex flex-col h-full">
+          <div className="flex gap-2 mb-6">
+            <input
+              type="text"
+              placeholder="输入新费用类型名称..."
+              value={newExpenseType}
+              onChange={(e) => setNewExpenseType(e.target.value)}
+              className="flex-grow border border-gray-300 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+            />
+            <button
+              onClick={() => {
+                if(newExpenseType) setExpenseTypes((prev: any) => [...prev, newExpenseType]);
+                setNewExpenseType('');
+              }}
+              className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold text-sm shadow hover:bg-indigo-700"
+            >
+              添加
+            </button>
+          </div>
+          <div className="flex-grow overflow-y-auto custom-scrollbar pr-2">
+            {expenseTypes.map((type, index) => (
+              <div key={type + index} className="flex items-center justify-between p-3 bg-gray-50/50 border border-gray-100 rounded-lg mb-2 group">
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-gray-400 font-mono w-4">{index + 1}.</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-700 text-sm">{type}</span>
+                    {index === 0 && <span className="bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded-full font-black border border-indigo-200">默认</span>}
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => moveExpenseType(index, 'up')}
+                    disabled={index === 0}
+                    className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded hover:bg-gray-200 transition-colors"
+                  >
+                    <Icons.ArrowUp className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => moveExpenseType(index, 'down')}
+                    disabled={index === expenseTypes.length - 1}
+                    className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded hover:bg-gray-200 transition-colors"
+                  >
+                    <Icons.ArrowDown className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => showConfirm({
+                      title: "删除类型",
+                      message: `确定要删除费用类型 "${type}" 吗？`,
+                      isDestructive: true,
+                      onConfirm: () => setExpenseTypes((prev: any) => prev.filter((_: any, i: any) => i !== index))
+                    })}
+                    className="p-1.5 text-red-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors ml-1"
+                  >
+                    <Icons.Trash className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ExpenseManagement: React.FC<{ cases: Case[]; expenses: ExpenseEntry[]; setExpenses: any; expenseTypes: string[]; setExpenseTypes: any; showConfirm: any; }> = ({ cases, expenses, setExpenses, expenseTypes, setExpenseTypes, showConfirm }) => {
+  const [selectedCaseId, setSelectedCaseId] = useState<string>('');
+  const [editingExpense, setEditingExpense] = useState<ExpenseEntry | null>(null);
+  const [isAddingExpense, setIsAddingExpense] = useState(false);
+  const [batchSelection, setBatchSelection] = useState<string[]>([]);
+
+  const [sortField, setSortField] = useState<'case' | 'date' | 'type' | 'amount'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const openCases = useMemo(() => cases.filter(c => c.isOpen), [cases]);
+
+  const filteredExpenses = useMemo(() => {
+    let result = expenses.filter(expense => !selectedCaseId || expense.caseId === selectedCaseId);
+
+    // Sort the expenses
+    result.sort((a, b) => {
+      let comparison = 0;
+      if (sortField === 'case') {
+        const caseA = cases.find(c => c.id === a.caseId)?.name || '';
+        const caseB = cases.find(c => c.id === b.caseId)?.name || '';
+        comparison = caseA.localeCompare(caseB);
+      } else if (sortField === 'date') {
+        comparison = a.date - b.date;
+      } else if (sortField === 'type') {
+        comparison = a.type.localeCompare(b.type);
+      } else if (sortField === 'amount') {
+        comparison = a.amount - b.amount;
+      }
+
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [expenses, selectedCaseId, sortField, sortOrder, cases]);
+
+  const handleAddManual = () => {
+    if (openCases.length === 0) {
+      window.alert("请先创建并打开至少一个案件。");
+      return;
+    }
+
+    const newExpense: ExpenseEntry = {
+      id: generateId('EXP-'),
+      caseId: selectedCaseId || openCases[0].id,
+      type: expenseTypes[0] || '其他',
+      amount: 0,
+      date: Date.now(),
+      notes: ''
+    };
+
+    setExpenses((prev: any) => [newExpense, ...prev]);
+    setIsAddingExpense(true);
+    setEditingExpense(newExpense);
+  };
+
+  const handleSaveExpense = (expense: ExpenseEntry) => {
+    if (expense.amount <= 0) {
+      alert("费用金额必须大于0");
+      return;
+    }
+    if (isAddingExpense) {
+      setExpenses((prev: ExpenseEntry[]) => prev.map(e => e.id === expense.id ? expense : e));
+    } else {
+      setExpenses((prev: ExpenseEntry[]) => prev.map(e => e.id === expense.id ? expense : e));
+    }
+    setEditingExpense(null);
+    setIsAddingExpense(false);
+  };
+
+  const formatDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}/${month}/${day}`;
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex justify-between items-center mb-5 shrink-0">
+        <div className="flex gap-2">
+          <select
+            value={selectedCaseId}
+            onChange={(e) => setSelectedCaseId(e.target.value)}
+            className="border rounded px-3 py-1.5 bg-white text-sm outline-none focus:ring-2 focus:ring-indigo-100 font-medium"
+          >
+            <option value="">所有案件</option>
+            {cases.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleAddManual}
+            className="flex items-center gap-1 text-indigo-600 border-2 border-indigo-600 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-indigo-50"
+          >
+            <Icons.Plus className="w-4 h-4" /> 手动添加
+          </button>
+        </div>
+        {batchSelection.length > 0 && (
+          <button
+            onClick={() => showConfirm({
+              title:"批量删除确认",
+              message:`确定要删除选中的 ${batchSelection.length} 条费用记录吗？此操作无法撤销。`,
+              isDestructive:true,
+              onConfirm:() => {
+                setExpenses((prev: any) => prev.filter((e: any) => !batchSelection.includes(e.id)));
+                setBatchSelection([]);
+              }
+            })}
+            className="bg-red-50 text-red-600 border border-red-200 px-4 py-1.5 rounded-lg text-xs font-black hover:bg-red-100 shadow-sm transition-colors"
+          >
+            删除选中
+          </button>
+        )}
+      </div>
+
+      <div className="flex-grow border border-gray-100 rounded-xl bg-white overflow-y-auto custom-scrollbar shadow-inner">
+        <table className="w-full text-left table-fixed border-collapse">
+          <thead className="bg-gray-50/90 backdrop-blur-sm text-gray-500 uppercase text-[11px] font-black sticky top-0 shadow-sm z-20">
+            <tr>
+              <th className="px-4 py-3 w-10 text-center">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  onChange={e => setBatchSelection(
+                    e.target.checked
+                      ? filteredExpenses.map(i => i.id)
+                      : []
+                  )}
+                  checked={
+                    batchSelection.length > 0 &&
+                    batchSelection.length === filteredExpenses.length &&
+                    filteredExpenses.length > 0
+                  }
+                />
+              </th>
+              <th
+                className="px-4 py-3 w-[25%] text-left cursor-pointer hover:text-indigo-600"
+                onClick={() => { setSortField('case'); setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); }}
+              >
+                归属案件 {sortField === 'case' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </th>
+              <th
+                className="px-4 py-3 w-[100px] text-left cursor-pointer hover:text-indigo-600"
+                onClick={() => { setSortField('date'); setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); }}
+              >
+                费用日期 {sortField === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </th>
+              <th
+                className="px-4 py-3 w-[100px] text-left cursor-pointer hover:text-indigo-600"
+                onClick={() => { setSortField('type'); setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); }}
+              >
+                费用类型 {sortField === 'type' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </th>
+              <th
+                className="px-4 py-3 w-[80px] text-right cursor-pointer hover:text-indigo-600"
+                onClick={() => { setSortField('amount'); setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc'); }}
+              >
+                费用金额 {sortField === 'amount' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-4 py-3 w-[100px] text-left">备注</th>
+              <th className="px-4 py-3 w-[60px] text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {filteredExpenses.map((expense) => {
+              const caseInfo = cases.find(c => c.id === expense.caseId);
+              return (
+                <tr key={expense.id} className="group hover:bg-gray-50">
+                  <td className="px-4 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      className="rounded"
+                      checked={batchSelection.includes(expense.id)}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setBatchSelection([...batchSelection, expense.id]);
+                        } else {
+                          setBatchSelection(batchSelection.filter(id => id !== expense.id));
+                        }
+                      }}
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-left font-medium min-w-0">
+                    <Tooltip text={caseInfo?.name || '未知案件'} className="w-full">
+                      <span className="cursor-help block truncate text-xs text-gray-700">{caseInfo?.name || '未知案件'}</span>
+                    </Tooltip>
+                  </td>
+                  <td className="px-4 py-3 text-left text-[10px] text-gray-400 font-mono leading-tight">{formatDate(expense.date)}</td>
+                  <td className="px-4 py-3 text-left truncate text-[11px] text-gray-500">{expense.type}</td>
+                  <td className="px-4 py-3 text-right font-bold text-indigo-600 text-xs">{expense.amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3 text-left min-w-0">
+                    <Tooltip text={expense.notes || '无备注信息'} className="w-full">
+                      <span className="cursor-help block truncate text-[11px] text-gray-500">
+                        {expense.notes || ''}
+                      </span>
+                    </Tooltip>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex justify-center gap-1">
+                      <button
+                        onClick={() => setEditingExpense(expense)}
+                        className="text-indigo-600 text-[11px] font-bold hover:underline"
+                      >
+                        编辑
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Editing Expense Modal */}
+      {editingExpense && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[150] p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md border border-gray-200 p-6">
+            <h4 className="text-lg font-bold mb-4 text-gray-800">
+              {isAddingExpense ? '添加费用记录' : '编辑费用记录'}
+            </h4>
+            <div className="space-y-4">
+              {!isAddingExpense && (
+                <div>
+                  <label className="text-sm font-bold text-gray-400 mb-1 block">归属案件</label>
+                  <input
+                    type="text"
+                    value={cases.find(c => c.id === editingExpense.caseId)?.name || ''}
+                    readOnly
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+              )}
+              {isAddingExpense && selectedCaseId === '' && (
+                <div>
+                  <label className="text-sm font-bold text-gray-400 mb-1 block">归属案件</label>
+                  <select
+                    value={editingExpense.caseId}
+                    onChange={(e) => setEditingExpense({...editingExpense, caseId: e.target.value})}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                  >
+                    {openCases.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {isAddingExpense && selectedCaseId !== '' && (
+                <div>
+                  <label className="text-sm font-bold text-gray-400 mb-1 block">归属案件</label>
+                  <input
+                    type="text"
+                    value={cases.find(c => c.id === selectedCaseId)?.name || ''}
+                    readOnly
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">费用日期</label>
+                <input
+                  type="date"
+                  value={new Date(editingExpense.date).toISOString().split('T')[0]}
+                  onChange={(e) => setEditingExpense({...editingExpense, date: new Date(e.target.value).getTime()})}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">费用类型</label>
+                <select
+                  value={editingExpense.type}
+                  onChange={(e) => setEditingExpense({...editingExpense, type: e.target.value})}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                >
+                  {expenseTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">费用金额</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editingExpense.amount > 0 ? editingExpense.amount : ''}
+                  onChange={(e) => setEditingExpense({...editingExpense, amount: parseFloat(e.target.value) || 0})}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">备注</label>
+                <textarea
+                  value={editingExpense.notes}
+                  onChange={(e) => setEditingExpense({...editingExpense, notes: e.target.value})}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm h-20 outline-none focus:ring-2 focus:ring-indigo-100"
+                  placeholder="可选备注信息"
+                />
               </div>
             </div>
-            <div className="flex gap-1">
-              <button onClick={() => moveType(index, 'up')} disabled={index === 0} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded hover:bg-gray-200 transition-colors"><Icons.ArrowUp className="w-4 h-4" /></button>
-              <button onClick={() => moveType(index, 'down')} disabled={index === workTypes.length - 1} className="p-1.5 text-gray-400 hover:text-indigo-600 disabled:opacity-20 rounded hover:bg-gray-200 transition-colors"><Icons.ArrowDown className="w-4 h-4" /></button>
-              <button onClick={() => showConfirm({ title:"删除类型", message:`确定要删除类型 "${type}" 吗？`, isDestructive: true, onConfirm: () => setWorkTypes((prev:any)=>prev.filter((_:any, i:any)=>i!==index)) })} className="p-1.5 text-red-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors ml-1"><Icons.Trash className="w-4 h-4" /></button>
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => { setEditingExpense(null); setIsAddingExpense(false); }}
+                className="px-4 py-2 text-sm text-gray-500 font-bold"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => editingExpense && handleSaveExpense(editingExpense)}
+                disabled={editingExpense.amount <= 0}
+                className="px-6 py-2 bg-indigo-600 text-white rounded text-sm font-bold shadow-md hover:bg-indigo-700 disabled:opacity-50"
+              >
+                保存修改
+              </button>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -488,7 +1115,7 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
   );
 };
 
-const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ cases, entries }) => {
+const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses: ExpenseEntry[]; }> = ({ cases, entries, expenses }) => {
   const [startDate, setStartDate] = useState(formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()));
   const [endDate, setEndDate] = useState(formatDate(Date.now()));
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
@@ -760,7 +1387,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; }> = ({ 
           </div>
         )}
       </div>
-      <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">统计报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button><button onClick={handleBillExport} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-amber-700 shadow-sm transition-colors">导出账单报表</button></div></div>
+      <div className="flex justify-between items-center shrink-0"><h3 className="text-lg font-bold text-gray-800">统计报表明细</h3><div className="flex gap-2"><button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button><button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button><button onClick={handleBillExport} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm transition-colors">导出账单报表</button></div></div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 shrink-0 overflow-x-auto pb-1 custom-scrollbar">
         {stats.map(s => {
           const c = cases.find(item => item.id === s.id);
