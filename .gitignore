@@ -32,5 +32,7 @@ yarn-error.log*
 
 # github pipeline
 .github/workflows/
-
+docs/
+features/
+.claude/
 .idea/
