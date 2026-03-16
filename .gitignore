@@ -9,6 +9,9 @@ coverage/
 # Production
 dist/
 
+# Worktrees
+.worktrees/
+
 # Misc
 .DS_Store
 *.pem
