@@ -1143,9 +1143,15 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
   }, [expenseDateFiltered, cases]);
 
   useEffect(() => {
-    const availableIds = new Set(availableCases.map(c => c.id));
-    setSelectedCaseIds(prev => prev.filter(id => availableIds.has(id)));
-  }, [availableCases]);
+    // 更新useEffect逻辑以同时处理两个tab的筛选
+    if (activeTab === 'time') {
+      const availableIds = new Set(availableCases.map(c => c.id));
+      setSelectedCaseIds(prev => prev.filter(id => availableIds.has(id)));
+    } else {
+      const availableIds = new Set(expenseAvailableCases.map(c => c.id));
+      setSelectedCaseIds(prev => prev.filter(id => availableIds.has(id)));
+    }
+  }, [availableCases, expenseAvailableCases, activeTab]);
 
   const filtered = useMemo(() => {
     if (selectedCaseIds.length === 0) return dateFiltered;
@@ -1162,6 +1168,12 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
     filtered.forEach(e => m.set(e.caseId, (m.get(e.caseId) || 0) + e.duration));
     return Array.from(m.entries()).map(([id, total]) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total }));
   }, [filtered, cases]);
+
+  const expenseStats = useMemo(() => {
+    const m = new Map<string, number>();
+    expenseFiltered.forEach(e => m.set(e.caseId, (m.get(e.caseId) || 0) + e.amount));
+    return Array.from(m.entries()).map(([id, total]) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total }));
+  }, [expenseFiltered, cases]);
 
     const prepareData = () => {
     const map = new Map<string, any>();
@@ -1417,7 +1429,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
         String(row[0]), // 案件名称
         String(row[1]), // 费用日期
         String(row[2]), // 费用类型
-        typeof row[3] === 'number' ? row[3].toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(row[3]), // 费用金额
+        typeof row[3] === 'number' ? row[3].toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(row[3]), // 费用金额（无单位）
         String(row[4])  // 备注
       ]);
 
@@ -1425,7 +1437,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
         String(row[0]), // 案件名称
         String(row[1]), // 总计
         String(row[2]), // 空
-        typeof row[3] === 'number' ? row[3].toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(row[3]), // 费用总计
+        typeof row[3] === 'number' ? row[3].toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(row[3]), // 费用总计（无单位）
         String(row[4])  // 空
       ]);
 
@@ -1454,7 +1466,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
           <div className="flex flex-col gap-1.5 flex-1"><label className="text-sm font-bold text-gray-400">截止日期</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div>
         </div>
 
-        {availableCases.length > 0 && (
+        {(activeTab === 'time' ? availableCases : expenseAvailableCases).length > 0 && (
           <div className="pt-3 border-t border-gray-200 flex flex-col gap-2">
             <label className="text-sm font-bold text-gray-400">筛选案件 (多选)</label>
             <div className="flex flex-wrap gap-2">
@@ -1464,7 +1476,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
               >
                 全部案件
               </button>
-              {availableCases.map(c => {
+              {(activeTab === 'time' ? availableCases : expenseAvailableCases).map(c => {
                 const isSelected = selectedCaseIds.includes(c.id);
                 return (
                   <button
@@ -1516,15 +1528,15 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
               </>
             )}
             {activeTab === 'expense' && (
-              <button onClick={handleExpenseExport} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-amber-700 shadow-sm transition-colors">导出费用报表</button>
+              <button onClick={handleExpenseExport} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm transition-colors">导出费用报表</button>
             )}
           </div>
         </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 shrink-0 overflow-x-auto pb-1 custom-scrollbar">
-        {stats.map(s => {
+        {(activeTab === 'time' ? stats : expenseStats).map(s => {
           const c = cases.find(item => item.id === s.id);
-          const activeEntryForCase = entries.find(e => e.caseId === s.id && e.endTime === null);
+          const activeEntryForCase = activeTab === 'time' ? entries.find(e => e.caseId === s.id && e.endTime === null) : null;
           const liveDurationText = activeEntryForCase ? formatLiveDuration(activeEntryForCase.startTime) : '';
           const tooltipText = (c?.description || c?.name || '未知') + (activeEntryForCase ? ` [计时中: ${liveDurationText}]` : '');
           return (
@@ -1532,7 +1544,11 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
               <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 h-full cursor-help min-w-0 transition-all hover:bg-indigo-100 shadow-sm min-w-[120px]">
                 <p className="text-[10px] text-indigo-400 font-bold truncate tracking-tight mb-1">{s.name}</p>
                 <div className="flex items-baseline gap-1">
-                  <p className="text-lg font-black text-indigo-700 tabular-nums">{formatDurationDisplay(s.total)}</p>
+                  <p className="text-lg font-black text-indigo-700 tabular-nums">
+                    {activeTab === 'time'
+                      ? formatDurationDisplay(s.total)
+                      : s.total.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
                   {activeEntryForCase && <span className="text-[9px] text-red-500 animate-pulse font-black px-1.5 py-0.5 bg-white rounded-full border border-red-100">+计</span>}
                 </div>
               </div>
