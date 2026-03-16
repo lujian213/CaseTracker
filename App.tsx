@@ -195,7 +195,7 @@ const App: React.FC = () => {
   const triggerAutoBackup = useCallback(() => {
     const now = Date.now();
     setNotification("正在执行定时自动备份...");
-    downloadJson({ cases, entries, workTypes, timestamp: now }, `Chronos_自动备份_${formatFullTimestamp(now)}.json`);
+    downloadJson({ cases, entries, expenses, workTypes, expenseTypes, timestamp: now }, `Chronos_自动备份_${formatFullTimestamp(now)}.json`);
     setBackupSettings(prev => ({ ...prev, lastBackupTime: now }));
     setTimeout(() => setNotification(null), 5000);
   }, [cases, entries, workTypes]);
@@ -474,7 +474,7 @@ const AdminOverlay: React.FC<{ tab: AdminTab; setTab: (t: AdminTab) => void; onC
           {tab === 'records' && <RecordManagement cases={cases} entries={entries} workTypes={workTypes} setEntries={setEntries} showConfirm={showConfirm} />}
           {tab === 'expenses' && <ExpenseManagement cases={cases} expenses={expenses} setExpenses={setExpenses} expenseTypes={expenseTypes} setExpenseTypes={setExpenseTypes} showConfirm={showConfirm} />}
           {tab === 'reports' && <ReportGeneration cases={cases} entries={entries} expenses={expenses} />}
-          {tab === 'system' && <SystemManagement cases={cases} entries={entries} workTypes={workTypes} setCases={setCases} setEntries={setEntries} setWorkTypes={setWorkTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={showConfirm} />}
+          {tab === 'system' && <SystemManagement cases={cases} entries={entries} expenses={expenses} workTypes={workTypes} expenseTypes={expenseTypes} setCases={setCases} setEntries={setEntries} setExpenses={setExpenses} setWorkTypes={setWorkTypes} setExpenseTypes={setExpenseTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={showConfirm} />}
         </div>
       </div>
     </div>
@@ -1639,12 +1639,12 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
   );
 };
 
-const SystemManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workTypes: string[]; setCases: any; setEntries: any; setWorkTypes: any; backupSettings: BackupSettings; setBackupSettings: any; showConfirm: any; }> = ({ cases, entries, workTypes, setCases, setEntries, setWorkTypes, backupSettings, setBackupSettings, showConfirm }) => {
+const SystemManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses: ExpenseEntry[]; workTypes: string[]; expenseTypes: string[]; setCases: any; setEntries: any; setExpenses: any; setWorkTypes: any; setExpenseTypes: any; backupSettings: BackupSettings; setBackupSettings: any; showConfirm: any; }> = ({ cases, entries, expenses, workTypes, expenseTypes, setCases, setEntries, setExpenses, setWorkTypes, setExpenseTypes, backupSettings, setBackupSettings, showConfirm }) => {
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     try {
       const text = await file.text(); const parsed = JSON.parse(text);
-      if (parsed && Array.isArray(parsed.cases)) { showConfirm({ title: "恢复数据确认", message: "导入备份将永久覆盖您当前浏览器中的所有计时记录和设置。此操作不可撤销，是否继续？", isDestructive: true, confirmText: "开始恢复", onConfirm: () => { setCases(parsed.cases); setEntries(parsed.entries); if(parsed.workTypes) setWorkTypes(parsed.workTypes); } }); }
+      if (parsed && Array.isArray(parsed.cases)) { showConfirm({ title: "恢复数据确认", message: "导入备份将永久覆盖您当前浏览器中的所有计时记录和设置。此操作不可撤销，是否继续？", isDestructive: true, confirmText: "开始恢复", onConfirm: () => { setCases(parsed.cases); setEntries(parsed.entries); setExpenses(parsed.expenses); if(parsed.workTypes) setWorkTypes(parsed.workTypes); if(parsed.expenseTypes) setExpenseTypes(parsed.expenseTypes); } }); }
     } catch (err) { window.alert("读取失败：请上传有效的 .json 备份文件。"); } finally { e.target.value = ''; }
   };
 
@@ -1696,7 +1696,7 @@ const SystemManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
           <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-indigo-600 group-hover:text-white transition-colors text-gray-400"><Icons.ArrowDown className="w-6 h-6" /></div>
           <h4 className="font-bold text-gray-700 mb-2 text-base">手动导出备份</h4>
           <p className="text-xs text-gray-400 mb-6 leading-relaxed">即刻导出一份包含当前所有数据的 JSON 格式文件至您的下载目录。</p>
-          <button onClick={() => downloadJson({ cases, entries, workTypes, timestamp: Date.now() }, `Chronos_手动备份_${formatFullTimestamp(Date.now())}.json`)} className="w-full bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:bg-indigo-700 transition-all active:scale-95">下载 JSON 备份</button>
+          <button onClick={() => downloadJson({ cases, entries, expenses, workTypes, expenseTypes, timestamp: Date.now() }, `Chronos_手动备份_${formatFullTimestamp(Date.now())}.json`)} className="w-full bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:bg-indigo-700 transition-all active:scale-95">下载 JSON 备份</button>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm text-center hover:shadow-md transition-all group">
           <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-amber-500 group-hover:text-white transition-colors text-gray-400"><Icons.ArrowUp className="w-6 h-6" /></div>
