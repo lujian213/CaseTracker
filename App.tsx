@@ -1032,12 +1032,16 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
 
   const handleAddManual = () => {
     if (openCases.length === 0) { window.alert("请先创建并打开至少一个案件。"); return; }
+
+    // 优先使用用户已选择的案件，如果没有选择则使用第一个打开的案件
+    const targetCaseId = selectedCaseId || openCases[0].id;
+
     const now = Date.now();
     const defaultDuration = 10;
     const startTime = now - (defaultDuration * 60 * 1000);
     const newEntry: TimeEntry = {
       id: generateId('REC-'),
-      caseId: openCases[0].id,
+      caseId: targetCaseId, // 使用已选择的案件ID
       workType: workTypes[0] || '会议',
       workContent: '',
       notes: '',
@@ -1109,7 +1113,124 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
         </table>
       </div>
       {editingEntry && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4"><div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm border border-gray-100"><h4 className="text-base font-bold text-gray-800 mb-6">{isNewRecord ? '手动添加记录' : '修改计时记录'}</h4><div className="space-y-4"><div><label className="text-sm font-bold text-gray-400 mb-1 block">归属案件</label><select value={editingEntry.caseId} disabled={!isNewRecord} onChange={e=>setEditingEntry({...editingEntry, caseId: e.target.value})} className="w-full border border-gray-300 p-2 rounded bg-gray-50 text-sm outline-none">{ (isNewRecord ? openCases : cases).map(c=><option key={c.id} value={c.id}>{c.name}</option>) }</select></div><div className="grid grid-cols-2 gap-4"><div><label className="text-sm font-bold text-gray-400 mb-1 block">工作类型</label><EditableSelect value={editingEntry.workType} onChange={v=>setEditingEntry({...editingEntry, workType: v})} options={workTypes} placeholder="选择类型" /></div><div><label className="text-sm font-bold text-gray-400 mb-1 block">统计时长 (分)</label><input type="number" min="1" value={editingEntry.duration} onChange={e => { const dur = parseInt(e.target.value) || 0; if (editingEntry.endTime) { const newStart = editingEntry.endTime - (dur * 60000); setEditingEntry({...editingEntry, duration: dur, startTime: newStart}); } else { setEditingEntry({...editingEntry, duration: dur}); } }} className={`w-full border border-gray-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-100`} /></div></div><div><label className="text-sm font-bold text-gray-400 mb-1 block">工作内容</label><input placeholder="输入详情..." value={editingEntry.workContent} onChange={e=>setEditingEntry({...editingEntry, workContent: e.target.value})} className="w-full border border-gray-300 px-3 py-2 rounded text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div><div><label className="text-sm font-bold text-gray-400 mb-1 block">注释</label><input placeholder="输入备注信息..." value={editingEntry.notes} onChange={e=>setEditingEntry({...editingEntry, notes: e.target.value})} className="w-full border border-gray-300 px-3 py-2 rounded text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div><div className="grid grid-cols-2 gap-4"><div><label className="text-sm font-bold text-gray-400 mb-1 block">起始时间</label><input type="datetime-local" readOnly={true} value={safeToISO(editingEntry.startTime)} className="w-full border border-gray-300 p-1.5 rounded text-[11px] bg-gray-50 text-gray-400" /></div><div><label className="text-sm font-bold text-gray-400 mb-1 block">结束时间</label><input type="datetime-local" value={safeToISO(editingEntry.endTime)} onChange={e => { const ts = new Date(e.target.value).getTime(); if(ts) { const newStart = ts - (editingEntry.duration * 60000); setEditingEntry({...editingEntry, endTime: ts, startTime: newStart}); } }} className="w-full border border-gray-300 p-1.5 rounded text-[11px]" /></div></div></div><div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100"><button onClick={()=>setEditingEntry(null)} className="px-4 py-2 text-sm text-gray-400 font-bold font-medium transition-colors hover:text-gray-600">取消</button><button onClick={()=>{ setEntries((prev:any)=>prev.map((i:any)=>i.id===editingEntry.id?editingEntry:i)); setEditingEntry(null); }} className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow hover:bg-indigo-700 transition-all">保存修改</button></div></div></div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[130] p-4">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm border border-gray-100">
+            <h4 className="text-base font-bold text-gray-800 mb-6">
+              {isNewRecord ? '手动添加记录' : '修改计时记录'}
+            </h4>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">归属案件</label>
+                <select
+                  value={editingEntry.caseId}
+                  disabled={
+                    !isNewRecord || // 在编辑现有记录时禁用
+                    (isNewRecord && !!selectedCaseId) // 在新建记录时，如果已选择了特定案件也禁用
+                  }
+                  onChange={e => setEditingEntry({...editingEntry, caseId: e.target.value})}
+                  className="w-full border border-gray-300 p-2 rounded bg-gray-50 text-sm outline-none"
+                >
+                  {
+                    // 如果是新记录且已选择了特定案件，则只显示该案件；否则显示所有可选项
+                    (isNewRecord && selectedCaseId)
+                      ? cases.filter(c => c.id === selectedCaseId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+                      : (isNewRecord ? openCases : cases).map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+                  }
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-bold text-gray-400 mb-1 block">工作类型</label>
+                  <EditableSelect
+                    value={editingEntry.workType}
+                    onChange={v => setEditingEntry({...editingEntry, workType: v})}
+                    options={workTypes}
+                    placeholder="选择类型"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-bold text-gray-400 mb-1 block">统计时长 (分)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editingEntry.duration}
+                    onChange={e => {
+                      const dur = parseInt(e.target.value) || 0;
+                      if (editingEntry.endTime) {
+                        const newStart = editingEntry.endTime - (dur * 60000);
+                        setEditingEntry({...editingEntry, duration: dur, startTime: newStart});
+                      } else {
+                        setEditingEntry({...editingEntry, duration: dur});
+                      }
+                    }}
+                    className="w-full border border-gray-300 p-2 rounded text-sm focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">工作内容</label>
+                <input
+                  placeholder="输入详情..."
+                  value={editingEntry.workContent}
+                  onChange={e => setEditingEntry({...editingEntry, workContent: e.target.value})}
+                  className="w-full border border-gray-300 px-3 py-2 rounded text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-gray-400 mb-1 block">注释</label>
+                <input
+                  placeholder="输入备注信息..."
+                  value={editingEntry.notes}
+                  onChange={e => setEditingEntry({...editingEntry, notes: e.target.value})}
+                  className="w-full border border-gray-300 px-3 py-2 rounded text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-bold text-gray-400 mb-1 block">起始时间</label>
+                  <input
+                    type="datetime-local"
+                    readOnly={true}
+                    value={safeToISO(editingEntry.startTime)}
+                    className="w-full border border-gray-300 p-1.5 rounded text-[11px] bg-gray-50 text-gray-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-bold text-gray-400 mb-1 block">结束时间</label>
+                  <input
+                    type="datetime-local"
+                    value={safeToISO(editingEntry.endTime)}
+                    onChange={e => {
+                      const ts = new Date(e.target.value).getTime();
+                      if(ts) {
+                        const newStart = ts - (editingEntry.duration * 60000);
+                        setEditingEntry({...editingEntry, endTime: ts, startTime: newStart});
+                      }
+                    }}
+                    className="w-full border border-gray-300 p-1.5 rounded text-[11px]"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => setEditingEntry(null)}
+                className="px-4 py-2 text-sm text-gray-400 font-bold font-medium transition-colors hover:text-gray-600"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  setEntries((prev: any) => prev.map((i: any) => i.id === editingEntry.id ? editingEntry : i));
+                  setEditingEntry(null);
+                }}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow hover:bg-indigo-700 transition-all"
+              >
+                保存修改
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1292,12 +1413,12 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
       // 过滤掉没有截止时间的记录
       const completedRecords = filtered.filter(item => item.endTime !== null);
 
-      // 按案件名称和日期分组
+      // 按案件名称和日期分组（使用格式化后的日期进行分组，而不是原始时间戳）
       const groupedData = new Map<string, TimeEntry[]>();
 
       completedRecords.forEach(entry => {
         const caseName = cases.find(c => c.id === entry.caseId)?.name || '未知';
-        const dateKey = formatDateForBillExport(entry.startTime); // 使用新的日期格式
+        const dateKey = formatDateForBillExport(entry.startTime); // 使用日期格式进行分组
         const groupKey = `${caseName}|${dateKey}`;
 
         if (!groupedData.has(groupKey)) {
@@ -1344,28 +1465,31 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
       });
 
       // 第二步合并：将每个分组里的记录合并成一条记录
-      const finalData: string[][] = [];
+      const finalData: {caseName: string, timestamp: number, workContent: string, durationHours: number}[] = [];
 
       firstLevelMerged.forEach((entries, groupKey) => {
+        // 从groupKey中提取案件名称和日期
+        const parts = groupKey.split('|');
+        const caseName = parts[0]; // 案件名称
+        const dateStr = parts[1]; // 日期字符串
+
         if (entries.length === 1) {
           // 如果只有一个记录，直接使用
           const entry = entries[0];
           const caseName = cases.find(c => c.id === entry.caseId)?.name || '未知';
-          const dateKey = formatDateForBillExport(entry.startTime); // 使用新的日期格式
           const workContent = `${entry.workType} ${entry.workContent}`.trim();
           const durationHours = minutesToRoundedHours(entry.duration); // 最终显示时才转换为小时
 
-          finalData.push([
+          finalData.push({
             caseName,
-            dateKey,
+            timestamp: entry.startTime, // 使用原始时间戳进行排序
             workContent,
-            durationHours.toFixed(1)
-          ]);
+            durationHours
+          });
         } else {
           // 多个记录合并成一条
           const firstEntry = entries[0];
           const caseName = cases.find(c => c.id === firstEntry.caseId)?.name || '未知';
-          const dateKey = formatDateForBillExport(firstEntry.startTime); // 使用新的日期格式
 
           // 合并工作内容："{工作内容}({时长})"，这里应该用转换后的小时值
           const workContentDetails = entries.map(entry => {
@@ -1380,25 +1504,33 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
             return sum + roundedHours;
           }, 0);
 
-          finalData.push([
+          finalData.push({
             caseName,
-            dateKey,
-            workContentDetails,
-            totalHours.toFixed(1)
-          ]);
+            timestamp: firstEntry.startTime, // 使用原始时间戳进行排序
+            workContent: workContentDetails,
+            durationHours: totalHours
+          });
         }
       });
 
-      // 排序：案件名称+日期升序
+      // 排序：案件名称+日期升序，使用原始时间戳进行日期排序
       finalData.sort((a, b) => {
-        const caseCmp = String(a[0]).localeCompare(String(b[0]));
+        const caseCmp = a.caseName.localeCompare(b.caseName);
         if (caseCmp !== 0) return caseCmp;
-        return String(a[1]).localeCompare(String(b[1]));
+        return a.timestamp - b.timestamp; // 使用原始时间戳排序，确保是日期类型的排序
       });
+
+      // 转换为字符串数组用于导出，并应用日期格式化
+      const finalStringData: string[][] = finalData.map(item => [
+        item.caseName,
+        formatDateForBillExport(item.timestamp), // 在最后一步格式化日期
+        item.workContent,
+        item.durationHours.toFixed(1)
+      ]);
 
       // 统计每案的总时长
       const caseTotals = new Map<string, number>();
-      finalData.forEach(row => {
+      finalStringData.forEach(row => {
         const caseName = row[0];
         const duration = parseFloat(row[3]) || 0;
         caseTotals.set(caseName, (caseTotals.get(caseName) || 0) + duration);
@@ -1416,7 +1548,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
       // 导出Excel文件
       downloadXlsx(
         billHeaders,
-        [...finalData, [], ...summaryRows],
+        [...finalStringData, [], ...summaryRows],
         `Chronos_账单报表_${formatFullTimestamp(Date.now())}.xlsx`
       );
     };
