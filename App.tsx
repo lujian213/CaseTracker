@@ -154,8 +154,12 @@ const App: React.FC = () => {
   const [confirmConfig, setConfirmConfig] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; confirmText?: string; isDestructive?: boolean; }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   const [, setTick] = useState(0);
+  const isLoadedRef = useRef(false);
 
   useEffect(() => {
+    if (isLoadedRef.current) return; // 防止 HMR 重复加载
+    isLoadedRef.current = true;
+
     const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (stored) {
       try {
@@ -175,6 +179,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!isLoadedRef.current) return; // Don't save until data is loaded
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ cases, entries, expenses, workTypes, expenseTypes, backupSettings }));
   }, [cases, entries, expenses, workTypes, expenseTypes, backupSettings]);
 
