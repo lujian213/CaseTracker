@@ -6,13 +6,13 @@ export const Icons = {
     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" {...props}>
       <defs>
         <linearGradient id="logo-grad-inner" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#6366f1" />
-          <stop offset="100%" stop-color="#4338ca" />
+          <stop offset="0%" stopColor="#6366f1" />
+          <stop offset="100%" stopColor="#4338ca" />
         </linearGradient>
       </defs>
       <rect width="32" height="32" rx="7" fill="url(#logo-grad-inner)" />
-      <circle cx="16" cy="16" r="10" fill="none" stroke="white" stroke-width="2.5" stroke-dasharray="45 15" stroke-linecap="round" opacity="0.4" transform="rotate(-90 16 16)" />
-      <path d="M16 10v6l4 2" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+      <circle cx="16" cy="16" r="10" fill="none" stroke="white" strokeWidth="2.5" strokeDasharray="45 15" strokeLinecap="round" opacity="0.4" transform="rotate(-90 16 16)" />
+      <path d="M16 10v6l4 2" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </svg>
   ),
   Settings: (props: React.SVGProps<SVGSVGElement>) => (

@@ -1,4 +1,7 @@
 // @ts-ignore
+import ExcelJS from 'exceljs';
+
+// @ts-ignore
 import * as XLSX from 'xlsx';
 
 export const generateId = (prefix: string = ''): string => {
@@ -115,55 +118,56 @@ export const downloadCsv = (headers: string[], rows: string[][], fileName: strin
   URL.revokeObjectURL(url);
 };
 
-export const downloadXlsx = (headers: string[], rows: string[][], fileName: string) => {
-  const data = [headers, ...rows];
-  const worksheet = XLSX.utils.aoa_to_sheet(data);
+export const downloadXlsx = async (headers: string[], rows: string[][], fileName: string) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('时间报表');
 
-  // Convert duration column (4th column, index 3) to numeric cells with one decimal place
-  try {
-    // Ensure we have a valid range
-    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-    const durationCol = 3; // zero-based index for the '时长(小时)' column
-    for (let R = range.s.r + 1; R <= range.e.r; ++R) { // start from row after headers
-      const cellAddress = { c: durationCol, r: R };
-      const addr = XLSX.utils.encode_cell(cellAddress);
-      const cell = worksheet[addr];
-      if (!cell) continue;
-      // cell.v may be a string like "1.2" or contain non-numeric; try parse
-      const raw = cell.v;
-      const num = typeof raw === 'number' ? raw : parseFloat(String(raw).toString().replace(/,/g, ''));
-      if (!isNaN(num)) {
-        worksheet[addr] = { t: 'n', v: num, z: '0.0' } as any;
-      }
-    }
-  } catch (err) {
-    // ignore conversion errors and fallback to original sheet
-    console.warn('XLSX duration conversion warning:', err);
-  }
+  // 添加表头
+  worksheet.getRow(1).values = headers;
 
-  // 遍历 Worksheet 中所有的单元格，若包含换行符（\n），为其激活自动换行样式。
-  Object.keys(worksheet).forEach(cellAddress => {
-    if (cellAddress.startsWith('!')) return;
-    const cell = worksheet[cellAddress];
-    if (cell && cell.t === 's' && typeof cell.v === 'string' && cell.v.includes('\n')) {
-      if (!cell.s) cell.s = {} as any;
-      if (!cell.s.alignment) cell.s.alignment = {} as any;
-      cell.s.alignment.wrapText = true;
-    }
+  // 添加数据行
+  rows.forEach((row, index) => {
+    worksheet.getRow(index + 2).values = row;
   });
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "时间报表");
+  // 设置列宽
+  worksheet.getColumn(1).width = 25; // 案件名称
+  worksheet.getColumn(2).width = 14; // 日期
+  worksheet.getColumn(3).width = 20; // 工作内容
+  worksheet.getColumn(4).width = 12; // 时长(小时)
+  worksheet.getColumn(5).width = 45; // 起止时间
+  worksheet.getColumn(6).width = 30; // 注释
 
-  // 调整列宽以适应导出表头: [案件名称, 日期, 工作内容, 时长(小时), 起止时间, 注释]
-  worksheet['!cols'] = [
-    { wch: 25 }, // 案件名称
-    { wch: 14 }, // 日期
-    { wch: 40 }, // 工作内容
-    { wch: 12 }, // 时长(小时)
-    { wch: 45 }, // 起止时间
-    { wch: 30 }, // 注释
-  ];
+  // 设置工作内容列（第三列，C列）的自动换行
+  const colC = worksheet.getColumn(3);
+  colC.eachCell({ includeEmpty: true }, (cell) => {
+    cell.alignment = { wrapText: true, vertical: 'top' };
+  });
 
-  XLSX.writeFile(workbook, fileName);
+  // 设置数据行的行高
+  for (let i = 2; i <= rows.length + 1; i++) {
+    worksheet.getRow(i).height = 35;
+  }
+
+  // 处理时长列 - 转换为数字格式并保留一位小数
+  for (let i = 2; i <= rows.length + 1; i++) {
+    const cell = worksheet.getCell(`D${i}`);
+    const num = parseFloat(String(cell.value || '0').replace(/,/g, ''));
+    if (!isNaN(num)) {
+      cell.value = num;
+      cell.numFmt = '0.0';
+    }
+  }
+
+  // 在浏览器中使用 writeBuffer 然后创建 blob 下载
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };

@@ -278,7 +278,7 @@ const App: React.FC = () => {
       {activeExpenseForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md border border-gray-200 p-6 relative">
-            <h3 className="text-xl font-bold text-gray-800 mb-5">添加费用</h3>
+            <h3 className="text-xl font-bold text-gray-800 mb-5">添加</h3>
 
             <div className="space-y-4">
               <div>
@@ -414,7 +414,7 @@ const CaseRow: React.FC<{
           <button
             onClick={() => onStart(caseItem.id, workType, workContent, notes)}
             disabled={isActive}
-            className={`flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-bold shadow transition-all min-w-[130px] ${isActive ? 'bg-white text-indigo-600 border border-indigo-200 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'}`}
+            className={`flex items-center justify-center gap-2 px-2 py-2 rounded text-sm font-bold shadow transition-all min-w-[40px] ${isActive ? 'bg-white text-indigo-600 border border-indigo-200 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'}`}
           >
             {isActive ? (
               <div className="flex items-center gap-2">
@@ -426,16 +426,16 @@ const CaseRow: React.FC<{
                 <span className="font-mono tabular-nums tracking-tighter">{liveDuration}</span>
               </div>
             ) : (
-              <><Icons.Play className="w-4 h-4" /> 开始计时</>
+              <Icons.Play className="w-4 h-4" />
             )}
           </button>
         </Tooltip>
         <Tooltip text="添加费用记录">
           <button
             onClick={() => onAddExpense(caseItem.id)}
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded text-sm font-bold shadow transition-all min-w-[110px] bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95"
+            className="flex items-center justify-center gap-1 px-2 py-2 rounded text-sm font-bold shadow transition-all min-w-[60px] bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95"
           >
-            <Icons.Plus className="w-4 h-4" /> 添加费用
+            <Icons.Plus className="w-4 h-4" /> 费用
           </button>
         </Tooltip>
       </div>
@@ -1070,7 +1070,7 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
           <thead className="bg-gray-50/90 backdrop-blur-sm text-gray-500 uppercase text-[11px] font-black sticky top-0 shadow-sm z-20">
             <tr>
               <th className="px-4 py-3 w-10 text-center"><input type="checkbox" className="rounded" onChange={e => setBatchSelection(e.target.checked ? sortedEntries.filter(i=>i.endTime!==null).map(i=>i.id) : [])} checked={batchSelection.length > 0 && batchSelection.length === sortedEntries.filter(i=>i.endTime!==null).length} /></th>
-              <th className="px-4 py-3 w-[25%] cursor-pointer hover:text-indigo-600" onClick={() => { setSortField('case'); setSortOrder(p=>p==='asc'?'desc':'asc'); }}>案件 {sortField === 'case' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
+              <th className="px-4 py-3 w-[35%] cursor-pointer hover:text-indigo-600" onClick={() => { setSortField('case'); setSortOrder(p=>p==='asc'?'desc':'asc'); }}>案件 {sortField === 'case' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
               <th className="px-4 py-3 w-[90px]">工作类型</th>
               <th className="px-4 py-3 w-[130px] cursor-pointer hover:text-indigo-600" onClick={() => { setSortField('time'); setSortOrder(p=>p==='asc'?'desc':'asc'); }}>时间记录 {sortField === 'time' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
               <th className="px-4 py-3 w-[70px] text-right">时长</th>
@@ -1406,10 +1406,10 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
     };
 
     const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.csv`); };
-    const handleXlsx = () => { const { mainRows, summaryRows } = prepareData(); downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
+    const handleXlsx = async () => { const { mainRows, summaryRows } = prepareData(); await downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
 
     // 新增：导出账单报表功能
-    const handleBillExport = () => {
+    const handleBillExport = async () => {
       // 过滤掉没有截止时间的记录
       const completedRecords = filtered.filter(item => item.endTime !== null);
 
@@ -1546,14 +1546,14 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
       ]);
 
       // 导出Excel文件
-      downloadXlsx(
+      await downloadXlsx(
         billHeaders,
         [...finalStringData, [], ...summaryRows],
         `Chronos_账单报表_${formatFullTimestamp(Date.now())}.xlsx`
       );
     };
 
-    const handleExpenseExport = () => {
+    const handleExpenseExport = async () => {
       const { mainRows, summaryRows } = prepareExpenseData();
 
       // 格式化金额数据为千分位字符串，并将所有数据转为字符串
@@ -1583,8 +1583,8 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
         ...formattedSummaryRows
       ];
 
-      downloadXlsx(
-        [], // 表头已包含在数据中
+      await downloadXlsx(
+        [],
         allData,
         `Chronos_费用报表_${formatFullTimestamp(Date.now())}.xlsx`
       );
