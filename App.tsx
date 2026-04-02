@@ -4,6 +4,9 @@ import { Case, TimeEntry, WorkType, AppData, BackupSettings, ExpenseEntry } from
 import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay, formatDateForExport, formatDateTimeForExport, minutesToRoundedHours, formatDateForBillExport } from './utils';
 import { Icons } from './constants';
 
+// 导入组件
+import PieChart from './components/PieChart';
+
 // 注册 Chart.js 组件
 Chart.register(ArcElement, PieController, ChartTooltip);
 
@@ -14,17 +17,16 @@ const CASE_COLORS = [
   '#06b6d4', '#84cc16', '#ef4444', '#10b981', '#f59e0b'
 ];
 
-// 工作类型颜色
+// 工作类型颜色 - 使用更多不同的颜色确保不重复
 const WORK_TYPE_COLORS = [
   '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444',
-  '#ec4899', '#14b8a6', '#6366f1', '#84cc16', '#f97316'
+  '#ec4899', '#14b8a6', '#84cc16', '#f97316', '#06b6d4',
+  '#6366f1', '#f43f5e', '#22c55e', '#0ea5e9', '#d946ef',
+  '#eab308', '#64748b', '#f472b6', '#0d9488', '#dc2626'
 ];
 
-// 费用类型颜色
-const EXPENSE_TYPE_COLORS = [
-  '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899',
-  '#f43f5e', '#14b8a6', '#6366f1', '#84cc16', '#ef4444'
-];
+// 费用类型颜色 - 与工作类型使用相同的高对比度配色
+const EXPENSE_TYPE_COLORS = WORK_TYPE_COLORS;
 
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
 const DEFAULT_WORK_TYPES = Object.values(WorkType);
@@ -38,96 +40,6 @@ type SortOrder = 'asc' | 'desc';
 const getCaseColor = (index: number): string => {
   if (index < 0) return CASE_COLORS[0];
   return CASE_COLORS[index % CASE_COLORS.length];
-};
-
-// 饼图组件
-interface PieChartProps {
-  data: { name: string; value: number; color: string }[];
-  title: string;
-  formatter?: (value: number) => string;
-}
-
-const PieChart: React.FC<PieChartProps> = ({ data, title, formatter = (v) => v.toString() }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<Chart | null>(null);
-
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return;
-
-    // 销毁旧图表
-    if (chartRef.current) {
-      chartRef.current.destroy();
-    }
-
-    // 过滤掉值为0的数据
-    const filteredData = data.filter(d => d.value > 0);
-    if (filteredData.length === 0) return;
-
-    // 创建新图表
-    chartRef.current = new Chart(ctx, {
-      type: 'pie',
-      data: {
-        labels: filteredData.map(d => d.name),
-        datasets: [{
-          data: filteredData.map(d => d.value),
-          backgroundColor: filteredData.map(d => d.color),
-          borderWidth: 2,
-          borderColor: '#fff'
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'right',
-            labels: {
-              boxWidth: 12,
-              padding: 8,
-              font: { size: 11 }
-            }
-          },
-          tooltip: {
-            enabled: true,
-            callbacks: {
-              label: (context: any) => {
-                const item = filteredData[context.dataIndex];
-                const total = filteredData.reduce((sum, d) => sum + d.value, 0);
-                const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0';
-                const name = item.name.length > 20 ? item.name.substring(0, 18) + '...' : item.name;
-                return `${name}: ${formatter(item.value)} (${percentage}%)`;
-              }
-            }
-          }
-        }
-      }
-    });
-
-    return () => {
-      if (chartRef.current) {
-        chartRef.current.destroy();
-      }
-    };
-  }, [data, formatter]);
-
-  if (data.length === 0 || data.every(d => d.value === 0)) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm">
-        <p>暂无数据</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col h-full relative rounded-xl items-center">
-      <h4 className="text-xs font-bold text-gray-600 absolute -top-2.5 left-3 bg-white px-1">{title}</h4>
-      <div className="h-44 w-full flex items-center justify-center">
-        <canvas ref={canvasRef} style={{ height: '100%', width: '100%' }} />
-      </div>
-    </div>
-  );
 };
 
 const formatLiveDuration = (startTime: number): string => {
@@ -1435,21 +1347,15 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
   const workTypeStats = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(e => m.set(e.workType, (m.get(e.workType) || 0) + e.duration));
-    const typeIndexMap = new Map<string, number>();
-    let idx = 0;
-    workTypes.forEach(t => typeIndexMap.set(t, idx++));
-    return Array.from(m.entries()).map(([type, total], index) => ({ name: type, total, color: WORK_TYPE_COLORS[typeIndexMap.get(type) ?? index] }));
-  }, [filtered, workTypes]);
+    return Array.from(m.entries()).map(([type, total], index) => ({ name: type, total, color: WORK_TYPE_COLORS[index % WORK_TYPE_COLORS.length] }));
+  }, [filtered]);
 
   // 费用类型分布统计
   const expenseTypeStats = useMemo(() => {
     const m = new Map<string, number>();
     expenseFiltered.forEach(e => m.set(e.type, (m.get(e.type) || 0) + e.amount));
-    const typeIndexMap = new Map<string, number>();
-    let idx = 0;
-    expenseTypes.forEach(t => typeIndexMap.set(t, idx++));
-    return Array.from(m.entries()).map(([type, total], index) => ({ name: type, total, color: EXPENSE_TYPE_COLORS[typeIndexMap.get(type) ?? index] }));
-  }, [expenseFiltered, expenseTypes]);
+    return Array.from(m.entries()).map(([type, total], index) => ({ name: type, total, color: EXPENSE_TYPE_COLORS[index % EXPENSE_TYPE_COLORS.length] }));
+  }, [expenseFiltered]);
 
     const prepareData = () => {
     const map = new Map<string, any>();
