@@ -1,7 +1,30 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Chart, ArcElement, PieController, Tooltip as ChartTooltip } from 'chart.js';
 import { Case, TimeEntry, WorkType, AppData, BackupSettings, ExpenseEntry } from './types';
 import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay, formatDateForExport, formatDateTimeForExport, minutesToRoundedHours, formatDateForBillExport } from './utils';
 import { Icons } from './constants';
+
+// 注册 Chart.js 组件
+Chart.register(ArcElement, PieController, ChartTooltip);
+
+// 颜色调色板 - 案件颜色（用于图表）
+const CASE_COLORS = [
+  '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
+  '#eab308', '#22c55e', '#14b8a6', '#0ea5e9', '#3b82f6',
+  '#64748b', '#a855f7', '#f43f5e', '#06b6d4', '#84cc16'
+];
+
+// 工作类型颜色
+const WORK_TYPE_COLORS = [
+  '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444',
+  '#ec4899', '#14b8a6', '#6366f1', '#84cc16', '#f97316'
+];
+
+// 费用类型颜色
+const EXPENSE_TYPE_COLORS = [
+  '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899',
+  '#f43f5e', '#14b8a6', '#6366f1', '#84cc16', '#ef4444'
+];
 
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
 const DEFAULT_WORK_TYPES = Object.values(WorkType);
@@ -10,6 +33,102 @@ type AdminTab = 'cases' | 'worktypes' | 'records' | 'expenses' | 'reports' | 'sy
 
 type SortField = 'case' | 'type' | 'time' | 'duration';
 type SortOrder = 'asc' | 'desc';
+
+// 获取案件颜色 - 使用稳定索引
+const getCaseColor = (index: number): string => {
+  if (index < 0) return CASE_COLORS[0];
+  return CASE_COLORS[index % CASE_COLORS.length];
+};
+
+// 饼图组件
+interface PieChartProps {
+  data: { name: string; value: number; color: string }[];
+  title: string;
+  formatter?: (value: number) => string;
+}
+
+const PieChart: React.FC<PieChartProps> = ({ data, title, formatter = (v) => v.toString() }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartRef = useRef<Chart | null>(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+
+    // 销毁旧图表
+    if (chartRef.current) {
+      chartRef.current.destroy();
+    }
+
+    // 过滤掉值为0的数据
+    const filteredData = data.filter(d => d.value > 0);
+    if (filteredData.length === 0) return;
+
+    // 创建新图表
+    chartRef.current = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels: filteredData.map(d => d.name),
+        datasets: [{
+          data: filteredData.map(d => d.value),
+          backgroundColor: filteredData.map(d => d.color),
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              boxWidth: 12,
+              padding: 8,
+              font: { size: 11 }
+            }
+          },
+          tooltip: {
+            enabled: true,
+            callbacks: {
+              label: (context: any) => {
+                const item = filteredData[context.dataIndex];
+                const total = filteredData.reduce((sum, d) => sum + d.value, 0);
+                const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0';
+                const name = item.name.length > 20 ? item.name.substring(0, 18) + '...' : item.name;
+                return `${name}: ${formatter(item.value)} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.destroy();
+      }
+    };
+  }, [data, formatter]);
+
+  if (data.length === 0 || data.every(d => d.value === 0)) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm">
+        <p>暂无数据</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full relative rounded-xl items-center">
+      <h4 className="text-xs font-bold text-gray-600 absolute -top-2.5 left-3 bg-white px-1">{title}</h4>
+      <div className="h-44 w-full flex items-center justify-center">
+        <canvas ref={canvasRef} style={{ height: '100%', width: '100%' }} />
+      </div>
+    </div>
+  );
+};
 
 const formatLiveDuration = (startTime: number): string => {
   const diff = Math.floor((Date.now() - startTime) / 1000);
@@ -473,12 +592,12 @@ const AdminOverlay: React.FC<{ tab: AdminTab; setTab: (t: AdminTab) => void; onC
             </button>
           ))}
         </div>
-        <div className="flex-1 p-6 bg-white overflow-hidden relative">
+        <div className="flex-1 p-3 bg-white overflow-hidden relative">
           {tab === 'cases' && <CaseManagement cases={cases} setCases={setCases} setEntries={setEntries} showConfirm={showConfirm} />}
           {tab === 'worktypes' && <WorkTypeManagement workTypes={workTypes} setWorkTypes={setWorkTypes} expenseTypes={expenseTypes} setExpenseTypes={setExpenseTypes} showConfirm={showConfirm} />}
           {tab === 'records' && <RecordManagement cases={cases} entries={entries} workTypes={workTypes} setEntries={setEntries} showConfirm={showConfirm} />}
           {tab === 'expenses' && <ExpenseManagement cases={cases} expenses={expenses} setExpenses={setExpenses} expenseTypes={expenseTypes} setExpenseTypes={setExpenseTypes} showConfirm={showConfirm} />}
-          {tab === 'reports' && <ReportGeneration cases={cases} entries={entries} expenses={expenses} />}
+          {tab === 'reports' && <ReportGeneration cases={cases} entries={entries} expenses={expenses} workTypes={workTypes} expenseTypes={expenseTypes} />}
           {tab === 'system' && <SystemManagement cases={cases} entries={entries} expenses={expenses} workTypes={workTypes} expenseTypes={expenseTypes} setCases={setCases} setEntries={setEntries} setExpenses={setExpenses} setWorkTypes={setWorkTypes} setExpenseTypes={setExpenseTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={showConfirm} />}
         </div>
       </div>
@@ -1241,7 +1360,7 @@ const RecordManagement: React.FC<{ cases: Case[]; entries: TimeEntry[]; workType
   );
 };
 
-const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses: ExpenseEntry[]; }> = ({ cases, entries, expenses }) => {
+const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses: ExpenseEntry[]; workTypes: string[]; expenseTypes: string[]; }> = ({ cases, entries, expenses, workTypes, expenseTypes }) => {
   const [startDate, setStartDate] = useState(formatDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()));
   const [endDate, setEndDate] = useState(formatDate(Date.now()));
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
@@ -1292,14 +1411,40 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
   const stats = useMemo(() => {
     const m = new Map<string, number>();
     filtered.forEach(e => m.set(e.caseId, (m.get(e.caseId) || 0) + e.duration));
-    return Array.from(m.entries()).map(([id, total]) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total }));
+    const caseIndexMap = new Map<string, number>();
+    let idx = 0;
+    cases.forEach(c => caseIndexMap.set(c.id, idx++));
+    return Array.from(m.entries()).map(([id, total], index) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total, color: getCaseColor(caseIndexMap.get(id) ?? index) }));
   }, [filtered, cases]);
 
   const expenseStats = useMemo(() => {
     const m = new Map<string, number>();
     expenseFiltered.forEach(e => m.set(e.caseId, (m.get(e.caseId) || 0) + e.amount));
-    return Array.from(m.entries()).map(([id, total]) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total }));
+    const caseIndexMap = new Map<string, number>();
+    let idx = 0;
+    cases.forEach(c => caseIndexMap.set(c.id, idx++));
+    return Array.from(m.entries()).map(([id, total], index) => ({ id, name: cases.find(c=>c.id===id)?.name || '未知', total, color: getCaseColor(caseIndexMap.get(id) ?? index) }));
   }, [expenseFiltered, cases]);
+
+  // 工作类型分布统计
+  const workTypeStats = useMemo(() => {
+    const m = new Map<string, number>();
+    filtered.forEach(e => m.set(e.workType, (m.get(e.workType) || 0) + e.duration));
+    const typeIndexMap = new Map<string, number>();
+    let idx = 0;
+    workTypes.forEach(t => typeIndexMap.set(t, idx++));
+    return Array.from(m.entries()).map(([type, total], index) => ({ name: type, total, color: WORK_TYPE_COLORS[typeIndexMap.get(type) ?? index] }));
+  }, [filtered, workTypes]);
+
+  // 费用类型分布统计
+  const expenseTypeStats = useMemo(() => {
+    const m = new Map<string, number>();
+    expenseFiltered.forEach(e => m.set(e.type, (m.get(e.type) || 0) + e.amount));
+    const typeIndexMap = new Map<string, number>();
+    let idx = 0;
+    expenseTypes.forEach(t => typeIndexMap.set(t, idx++));
+    return Array.from(m.entries()).map(([type, total], index) => ({ name: type, total, color: EXPENSE_TYPE_COLORS[typeIndexMap.get(type) ?? index] }));
+  }, [expenseFiltered, expenseTypes]);
 
     const prepareData = () => {
     const map = new Map<string, any>();
@@ -1596,30 +1741,47 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
     };
 
   return (
-    <div className="space-y-6 flex flex-col h-full overflow-hidden">
-      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-4 shrink-0 shadow-sm">
-        <div className="flex gap-4">
-          <div className="flex flex-col gap-1.5 flex-1"><label className="text-sm font-bold text-gray-400">起始日期</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div>
-          <div className="flex flex-col gap-1.5 flex-1"><label className="text-sm font-bold text-gray-400">截止日期</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-100" /></div>
+    <div className="space-y-2 flex flex-col h-full overflow-hidden">
+      <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 flex flex-col gap-3 shrink-0 shadow-sm">
+        <div className="flex gap-3">
+          <div className="flex flex-col gap-1.5 flex-1"><label className="text-xs font-bold text-gray-400">起始日期</label><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-100" /></div>
+          <div className="flex flex-col gap-1.5 flex-1"><label className="text-xs font-bold text-gray-400">截止日期</label><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-gray-300 rounded px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-100" /></div>
         </div>
 
         {(activeTab === 'time' ? availableCases : expenseAvailableCases).length > 0 && (
-          <div className="pt-3 border-t border-gray-200 flex flex-col gap-2">
-            <label className="text-sm font-bold text-gray-400">筛选案件 (多选)</label>
-            <div className="flex flex-wrap gap-2">
+          <div className="pt-2 border-t border-gray-200 flex flex-col gap-1">
+            <label className="text-xs font-bold text-gray-400">筛选案件 (多选)</label>
+            <div className="flex flex-wrap gap-1">
               <button
-                onClick={() => setSelectedCaseIds([])}
+                onClick={() => setSelectedCaseIds(prev => prev.length === 0 ? ['__none__'] : [])}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedCaseIds.length === 0 ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-100'}`}
               >
                 全部案件
               </button>
-              {(activeTab === 'time' ? availableCases : expenseAvailableCases).map(c => {
-                const isSelected = selectedCaseIds.includes(c.id);
+              {(activeTab === 'time' ? availableCases : expenseAvailableCases).map((c) => {
+                const isSelected = selectedCaseIds.length === 0 || (selectedCaseIds[0] !== '__none__' && selectedCaseIds.includes(c.id));
+                const caseColor = getCaseColor(cases.findIndex(cs => cs.id === c.id));
                 return (
                   <button
                     key={c.id}
-                    onClick={() => setSelectedCaseIds(prev => isSelected ? prev.filter(id => id !== c.id) : [...prev, c.id])}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'}`}
+                    onClick={() => setSelectedCaseIds(prev => {
+                      if (prev.length === 0) {
+                        // 全选状态 → 取消选中当前
+                        const allIds = (activeTab === 'time' ? availableCases : expenseAvailableCases).map(cc => cc.id);
+                        return allIds.filter(id => id !== c.id);
+                      } else if (prev[0] === '__none__') {
+                        // 全不选状态 → 选中当前
+                        return [c.id];
+                      } else if (prev.length === 1 && prev[0] === c.id) {
+                        // 只选中一个且是自己 → 取消选中（变成全不选）
+                        return ['__none__'];
+                      } else {
+                        // 部分选中状态 → 反转当前
+                        return prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id];
+                      }
+                    })}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
+                    style={isSelected ? { backgroundColor: caseColor, borderColor: caseColor, color: 'white' } : { backgroundColor: 'white', borderColor: '#e5e7eb', color: '#4b5563' }}
                   >
                     {c.name}
                   </button>
@@ -1629,11 +1791,11 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
           </div>
         )}
       </div>
-      <div className="flex flex-col gap-4">
-        <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex justify-between items-center border-b border-gray-200 pb-1">
+        <div className="flex gap-0.5">
           <button
             onClick={() => setActiveTab('time')}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg ${
+            className={`px-4 py-1 text-sm font-medium rounded-t-lg ${
               activeTab === 'time'
                 ? 'bg-white text-indigo-700 border-t border-l border-r border-gray-200'
                 : 'text-gray-500 hover:text-gray-700'
@@ -1643,7 +1805,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
           </button>
           <button
             onClick={() => setActiveTab('expense')}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg ${
+            className={`px-4 py-1 text-sm font-medium rounded-t-lg ${
               activeTab === 'expense'
                 ? 'bg-white text-indigo-700 border-t border-l border-r border-gray-200'
                 : 'text-gray-500 hover:text-gray-700'
@@ -1652,57 +1814,66 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
             费用记录明细
           </button>
         </div>
-        <div className="flex justify-between items-center shrink-0">
-          <h3 className="text-lg font-bold text-gray-800">
-            {activeTab === 'time' ? '时间记录明细' : '费用记录明细'}
-          </h3>
-          <div className="flex gap-2">
-            {activeTab === 'time' && (
-              <>
-                <button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button>
-                <button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button>
-                <button onClick={handleBillExport} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm transition-colors">导出账单报表</button>
-              </>
-            )}
-            {activeTab === 'expense' && (
-              <button onClick={handleExpenseExport} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm transition-colors">导出费用报表</button>
-            )}
-          </div>
+        <div className="flex gap-1 shrink-0">
+          {activeTab === 'time' && (
+            <>
+              <button onClick={handleCsv} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 shadow-sm transition-colors">导出 CSV</button>
+              <button onClick={handleXlsx} className="bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-800 shadow-sm transition-colors">导出 XLSX</button>
+              <button onClick={handleBillExport} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm transition-colors">导出账单报表</button>
+            </>
+          )}
+          {activeTab === 'expense' && (
+            <button onClick={handleExpenseExport} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 shadow-sm transition-colors">导出费用报表</button>
+          )}
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 shrink-0 overflow-x-auto pb-1 custom-scrollbar">
-        {(activeTab === 'time' ? stats : expenseStats).map(s => {
-          const c = cases.find(item => item.id === s.id);
-          const activeEntryForCase = activeTab === 'time' ? entries.find(e => e.caseId === s.id && e.endTime === null) : null;
-          const liveDurationText = activeEntryForCase ? formatLiveDuration(activeEntryForCase.startTime) : '';
-          const tooltipText = (c?.description || c?.name || '未知') + (activeEntryForCase ? ` [计时中: ${liveDurationText}]` : '');
-          return (
-            <Tooltip key={s.id} text={tooltipText}>
-              <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 h-full cursor-help min-w-0 transition-all hover:bg-indigo-100 shadow-sm min-w-[120px]">
-                <p className="text-[10px] text-indigo-400 font-bold truncate tracking-tight mb-1">{s.name}</p>
-                <div className="flex items-baseline gap-1">
-                  <p className="text-lg font-black text-indigo-700 tabular-nums">
-                    {activeTab === 'time'
-                      ? formatDurationDisplay(s.total)
-                      : s.total.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                  {activeEntryForCase && <span className="text-[9px] text-red-500 animate-pulse font-black px-1.5 py-0.5 bg-white rounded-full border border-red-100">+计</span>}
-                </div>
-              </div>
-            </Tooltip>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-1 shrink-0">
+        {activeTab === 'time' ? (
+          <>
+            <div className="bg-white rounded-xl shadow-sm">
+              <PieChart
+                data={stats.map((s, i) => ({ name: s.name, value: s.total, color: s.color || getCaseColor(i) }))}
+                title="案件时间分布"
+                formatter={(v) => formatDurationDisplay(v)}
+              />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm">
+              <PieChart
+                data={workTypeStats.map(s => ({ name: s.name, value: s.total, color: s.color }))}
+                title="工作类型分布"
+                formatter={(v) => formatDurationDisplay(v)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bg-white rounded-xl shadow-sm">
+              <PieChart
+                data={expenseStats.map((s, i) => ({ name: s.name, value: s.total, color: s.color || getCaseColor(i) }))}
+                title="案件费用分布"
+                formatter={(v) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm">
+              <PieChart
+                data={expenseTypeStats.map(s => ({ name: s.name, value: s.total, color: s.color }))}
+                title="费用类型分布"
+                formatter={(v) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              />
+            </div>
+          </>
+        )}
       </div>
-      <div className="border border-gray-100 rounded-xl bg-white flex-grow overflow-y-auto custom-scrollbar shadow-sm">
+      <div className="mt-1 border border-gray-100 rounded-xl bg-white flex-grow overflow-y-auto custom-scrollbar shadow-sm">
         {activeTab === 'time' && (
           <table className="w-full text-left table-fixed border-collapse">
             <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[11px] sticky top-0 z-10 border-b border-gray-100 shadow-sm">
               <tr>
-                <th className="px-4 py-3 w-[30%]">案件</th>
-                <th className="px-4 py-3 w-[100px]">类型</th>
-                <th className="px-4 py-3 w-[130px]">时间范围</th>
-                <th className="px-4 py-3 w-[80px] text-right">时长</th>
-                <th className="px-4 py-3">工作内容</th>
+                <th className="px-4 py-2 w-[30%]">案件</th>
+                <th className="px-4 py-2 w-[100px]">类型</th>
+                <th className="px-4 py-2 w-[130px]">时间范围</th>
+                <th className="px-4 py-2 w-[80px] text-right">时长</th>
+                <th className="px-4 py-2">工作内容</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -1744,11 +1915,11 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
           <table className="w-full text-left table-fixed border-collapse">
             <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[11px] sticky top-0 z-10 border-b border-gray-100 shadow-sm">
               <tr>
-                <th className="px-4 py-3 w-[30%] text-left">案件名称</th>
-                <th className="px-4 py-3 w-[100px] text-left">费用日期</th>
-                <th className="px-4 py-3 w-[100px] text-left">费用类型</th>
-                <th className="px-4 py-3 w-[80px] text-right">费用金额</th>
-                <th className="px-4 py-3 text-left">备注</th>
+                <th className="px-4 py-2 w-[30%] text-left">案件名称</th>
+                <th className="px-4 py-2 w-[100px] text-left">费用日期</th>
+                <th className="px-4 py-2 w-[100px] text-left">费用类型</th>
+                <th className="px-4 py-2 w-[80px] text-right">费用金额</th>
+                <th className="px-4 py-2 text-left">备注</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
