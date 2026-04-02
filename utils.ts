@@ -85,6 +85,14 @@ export const formatDurationDisplay = (minutes: number): string => {
   return m === 0 ? `${h}h` : `${h}h${m}m`;
 };
 
+export const formatLiveDuration = (startTime: number): string => {
+  const diff = Math.floor((Date.now() - startTime) / 1000);
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+  return [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
+};
+
 export const downloadJson = (data: any, fileName: string) => {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
