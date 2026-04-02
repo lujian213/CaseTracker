@@ -1,9 +1,6 @@
 // @ts-ignore
 import ExcelJS from 'exceljs';
 
-// @ts-ignore
-import * as XLSX from 'xlsx';
-
 export const generateId = (prefix: string = ''): string => {
   return `${prefix}${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 };
@@ -118,7 +115,7 @@ export const downloadCsv = (headers: string[], rows: string[][], fileName: strin
   URL.revokeObjectURL(url);
 };
 
-export const downloadXlsx = async (headers: string[], rows: string[][], fileName: string) => {
+export const downloadXlsx = async (headers: string[], rows: string[][], fileName: string, options?: { bottomAlignColumns?: number[] }) => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('时间报表');
 
@@ -143,6 +140,16 @@ export const downloadXlsx = async (headers: string[], rows: string[][], fileName
   colC.eachCell({ includeEmpty: true }, (cell) => {
     cell.alignment = { wrapText: true, vertical: 'top' };
   });
+
+  // 设置底部对齐的列
+  if (options?.bottomAlignColumns) {
+    options.bottomAlignColumns.forEach(colNum => {
+      const col = worksheet.getColumn(colNum);
+      col.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = { ...cell.alignment, vertical: 'bottom' };
+      });
+    });
+  }
 
   // 设置数据行的行高
   for (let i = 2; i <= rows.length + 1; i++) {

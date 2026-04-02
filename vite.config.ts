@@ -12,11 +12,15 @@ export default defineConfig({
       input: {
         main: './index.html',
       },
-      // Important: Tell Rollup that 'xlsx' is external and shouldn't be bundled
-      external: ['xlsx'],
+      // Important: Tell Rollup that 'exceljs' is external and shouldn't be bundled
+      external: ['exceljs'],
       output: {
         globals: {
-          xlsx: 'XLSX',
+          exceljs: 'ExcelJS',
+        },
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-chart': ['chart.js'],
         },
       },
     },

@@ -1561,7 +1561,7 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
     };
 
     const handleCsv = () => { const { mainRows, summaryRows } = prepareData(); downloadCsv(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.csv`); };
-    const handleXlsx = async () => { const { mainRows, summaryRows } = prepareData(); await downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`); };
+    const handleXlsx = async () => { const { mainRows, summaryRows } = prepareData(); await downloadXlsx(headers, [...mainRows, [], ...summaryRows], `Chronos_时间记录报表_${formatFullTimestamp(Date.now())}.xlsx`, { bottomAlignColumns: [3] }); };
 
     // 新增：导出账单报表功能
     const handleBillExport = async () => {
@@ -1704,7 +1704,8 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
       await downloadXlsx(
         billHeaders,
         [...finalStringData, [], ...summaryRows],
-        `Chronos_账单报表_${formatFullTimestamp(Date.now())}.xlsx`
+        `Chronos_账单报表_${formatFullTimestamp(Date.now())}.xlsx`,
+        { bottomAlignColumns: [3] } // 工作内容列底部对齐
       );
     };
 
@@ -1741,7 +1742,8 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
       await downloadXlsx(
         [],
         allData,
-        `Chronos_费用报表_${formatFullTimestamp(Date.now())}.xlsx`
+        `Chronos_费用报表_${formatFullTimestamp(Date.now())}.xlsx`,
+        { bottomAlignColumns: [3] } // 费用类型列底部对齐
       );
     };
 
