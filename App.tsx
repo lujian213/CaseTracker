@@ -7,11 +7,11 @@ import { Icons } from './constants';
 // 注册 Chart.js 组件
 Chart.register(ArcElement, PieController, ChartTooltip);
 
-// 颜色调色板 - 案件颜色（用于图表）
+// 颜色调色板 - 案件颜色（用于图表）- 避免与"全部案件"按钮的indigo色冲突
 const CASE_COLORS = [
-  '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
-  '#eab308', '#22c55e', '#14b8a6', '#0ea5e9', '#3b82f6',
-  '#64748b', '#a855f7', '#f43f5e', '#06b6d4', '#84cc16'
+  '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e',
+  '#14b8a6', '#0ea5e9', '#3b82f6', '#64748b', '#a855f7',
+  '#06b6d4', '#84cc16', '#ef4444', '#10b981', '#f59e0b'
 ];
 
 // 工作类型颜色
@@ -1367,13 +1367,18 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
   const [activeTab, setActiveTab] = useState<'time' | 'expense'>('time');
 
   const dateFiltered = useMemo(() => {
-    const s = new Date(startDate).getTime(); const e = new Date(endDate).getTime() + 86400000;
+    const startParts = startDate.split('-').map(Number);
+    const endParts = endDate.split('-').map(Number);
+    const s = new Date(startParts[0], startParts[1] - 1, startParts[2], 0, 0, 0, 0).getTime();
+    const e = new Date(endParts[0], endParts[1] - 1, endParts[2], 23, 59, 59, 999).getTime();
     return entries.filter(item => item.startTime >= s && item.startTime <= e).sort((a,b)=>b.startTime-a.startTime);
   }, [entries, startDate, endDate]);
 
   const expenseDateFiltered = useMemo(() => {
-    const s = new Date(startDate).getTime();
-    const e = new Date(endDate).getTime() + 86400000;
+    const startParts = startDate.split('-').map(Number);
+    const endParts = endDate.split('-').map(Number);
+    const s = new Date(startParts[0], startParts[1] - 1, startParts[2], 0, 0, 0, 0).getTime();
+    const e = new Date(endParts[0], endParts[1] - 1, endParts[2], 23, 59, 59, 999).getTime();
     return expenses.filter(item => item.date >= s && item.date <= e).sort((a,b) => b.date - a.date);
   }, [expenses, startDate, endDate]);
 
@@ -1765,13 +1770,15 @@ const ReportGeneration: React.FC<{ cases: Case[]; entries: TimeEntry[]; expenses
                   <button
                     key={c.id}
                     onClick={() => setSelectedCaseIds(prev => {
+                      const allIds = (activeTab === 'time' ? availableCases : expenseAvailableCases).map(cc => cc.id);
                       if (prev.length === 0) {
                         // 全选状态 → 取消选中当前
-                        const allIds = (activeTab === 'time' ? availableCases : expenseAvailableCases).map(cc => cc.id);
-                        return allIds.filter(id => id !== c.id);
+                        const newSelected = allIds.filter(id => id !== c.id);
+                        // 如果只有一个案件，取消后变成全不选
+                        return newSelected.length === 0 ? ['__none__'] : newSelected;
                       } else if (prev[0] === '__none__') {
                         // 全不选状态 → 选中当前
-                        return [c.id];
+                        return allIds.length === 1 ? [c.id] : [c.id];
                       } else if (prev.length === 1 && prev[0] === c.id) {
                         // 只选中一个且是自己 → 取消选中（变成全不选）
                         return ['__none__'];
