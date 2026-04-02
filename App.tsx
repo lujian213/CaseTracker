@@ -6,6 +6,7 @@ import { Icons } from './constants';
 
 // 导入组件
 import PieChart from './components/PieChart';
+import Tooltip from './components/Tooltip';
 
 // 注册 Chart.js 组件
 Chart.register(ArcElement, PieController, ChartTooltip);
@@ -48,68 +49,6 @@ const formatLiveDuration = (startTime: number): string => {
   const m = Math.floor((diff % 3600) / 60);
   const s = diff % 60;
   return [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
-};
-
-/**
- * 优化版 Tooltip：
- * 1. 使用 fixed 定位彻底解决容器遮挡（overflow-hidden）问题。
- * 2. 限制最大高度并支持滚动，解决纵向占用过大问题。
- */
-const Tooltip: React.FC<{ text: string; children: React.ReactNode; className?: string }> = ({ text, children, className = "" }) => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [position, setPosition] = useState<'top' | 'bottom'>('top');
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const updatePosition = () => {
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      const spaceAbove = rect.top;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      // 如果上方空间不足 100px 且下方空间更大，则显示在下方
-      setPosition(spaceAbove < 100 && spaceBelow > spaceAbove ? 'bottom' : 'top');
-    }
-  };
-
-  const handleMouseEnter = () => {
-    updatePosition();
-    setIsVisible(true);
-  };
-
-  return (
-    <div
-      ref={containerRef}
-      className={`inline-flex items-center min-w-0 ${className}`}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setIsVisible(false)}
-    >
-      <div className="relative inline-block w-full min-w-0">
-        {children}
-        {isVisible && (
-          <div
-            className="fixed z-[2000] pointer-events-none animate-in fade-in zoom-in-95 duration-100"
-            style={{
-              left: containerRef.current?.getBoundingClientRect().left! + (containerRef.current?.getBoundingClientRect().width! / 2),
-              top: position === 'top'
-                ? containerRef.current?.getBoundingClientRect().top! - 8
-                : containerRef.current?.getBoundingClientRect().bottom! + 8,
-              transform: position === 'top' ? 'translate(-50%, -100%)' : 'translateX(-50%)'
-            }}
-          >
-            <div className="bg-gray-900/95 backdrop-blur-sm shadow-2xl p-2 rounded-lg border border-gray-700 max-w-[220px] sm:max-w-xs">
-              <div className="text-white text-[10px] leading-relaxed max-h-24 overflow-y-auto custom-scrollbar break-words text-center">
-                {text}
-              </div>
-              <div
-                className={`absolute left-1/2 -translate-x-1/2 border-[5px] border-transparent
-                  ${position === 'top' ? 'top-full border-t-gray-900/95' : 'bottom-full border-b-gray-900/95'}
-                `}
-              ></div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 };
 
 const EditableSelect: React.FC<{
