@@ -14,21 +14,16 @@ const WorkTypeManagement: React.FC<WorkTypeManagementProps> = ({ workTypes, setW
   const [newWorkType, setNewWorkType] = useState('');
   const [newExpenseType, setNewExpenseType] = useState('');
 
-  const moveWorkType = (index: number, direction: 'up' | 'down') => {
+  const moveItem = <T,>(list: T[], setList: React.Dispatch<React.SetStateAction<T[]>>, index: number, direction: 'up' | 'down') => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= workTypes.length) return;
-    const updated = [...workTypes];
+    if (newIndex < 0 || newIndex >= list.length) return;
+    const updated = [...list];
     [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
-    setWorkTypes(updated);
+    setList(updated);
   };
 
-  const moveExpenseType = (index: number, direction: 'up' | 'down') => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= expenseTypes.length) return;
-    const updated = [...expenseTypes];
-    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
-    setExpenseTypes(updated);
-  };
+  const moveWorkType = (index: number, direction: 'up' | 'down') => moveItem(workTypes, setWorkTypes, index, direction);
+  const moveExpenseType = (index: number, direction: 'up' | 'down') => moveItem(expenseTypes, setExpenseTypes, index, direction);
 
   return (
     <div className="flex flex-col h-full">

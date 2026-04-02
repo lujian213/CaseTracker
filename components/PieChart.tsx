@@ -22,19 +22,17 @@ const PieChart: React.FC<PieChartProps> = ({ data, title, formatter = (v) => v.t
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
 
-    // 销毁旧图表
     if (chartRef.current) {
       chartRef.current.destroy();
     }
 
-    // 过滤掉值为0的数据，并截断图例文字（最多12个字）
+    // 过滤掉值为0的数据
     const filteredData = data.filter(d => d.value > 0);
     if (filteredData.length === 0) return;
 
-    // 截断图例文字
+    // 截断图例文字（最多18字符）
     const truncateLabel = (name: string) => name.length > 18 ? name.substring(0, 16) + '...' : name;
 
-    // 创建新图表
     chartRef.current = new Chart(ctx, {
       type: 'pie',
       data: {

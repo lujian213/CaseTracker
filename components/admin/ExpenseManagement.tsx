@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Case, ExpenseEntry } from '../../types';
 import { Icons } from '../../constants';
-import { generateId } from '../../utils';
+import { generateId, formatDateForExport } from '../../utils';
 import Tooltip from '../Tooltip';
 import EditableSelect from '../EditableSelect';
 
@@ -81,14 +81,6 @@ const ExpenseManagement: React.FC<ExpenseManagementProps> = ({ cases, expenses, 
     }
     setEditingExpense(null);
     setIsAddingExpense(false);
-  };
-
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}/${month}/${day}`;
   };
 
   return (
@@ -202,7 +194,7 @@ const ExpenseManagement: React.FC<ExpenseManagementProps> = ({ cases, expenses, 
                       <span className="cursor-help block truncate text-xs text-gray-700">{caseInfo?.name || '未知案件'}</span>
                     </Tooltip>
                   </td>
-                  <td className="px-4 py-3 text-left text-[10px] text-gray-400 font-mono leading-tight">{formatDate(expense.date)}</td>
+                  <td className="px-4 py-3 text-left text-[10px] text-gray-400 font-mono leading-tight">{formatDateForExport(expense.date)}</td>
                   <td className="px-4 py-3 text-left truncate text-[11px] text-gray-500">{expense.type}</td>
                   <td className="px-4 py-3 text-right font-bold text-indigo-600 text-xs">{expense.amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="px-4 py-3 text-left min-w-0">

@@ -34,6 +34,15 @@ export const formatDateForExport = (timestamp: number): string => {
   return `${year}/${month}/${d}`;
 };
 
+export const parseDateRange = (startDateStr: string, endDateStr: string): { start: number; end: number } => {
+  const startParts = startDateStr.split('-').map(Number);
+  const endParts = endDateStr.split('-').map(Number);
+  return {
+    start: new Date(startParts[0], startParts[1] - 1, startParts[2], 0, 0, 0, 0).getTime(),
+    end: new Date(endParts[0], endParts[1] - 1, endParts[2], 23, 59, 59, 999).getTime()
+  };
+};
+
 // New: Special date formatter for bill export - format similar to "yyyy/MM/dd"
 export const formatDateForBillExport = (timestamp: number): string => {
   const date = isNaN(Number(timestamp)) ? new Date() : new Date(timestamp);

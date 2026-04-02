@@ -1,12 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Case, TimeEntry } from '../../types';
+import { Case, TimeEntry, SortField, SortOrder } from '../../types';
 import { Icons } from '../../constants';
 import { generateId, formatDateTime, formatDurationDisplay, formatLiveDuration } from '../../utils';
 import Tooltip from '../Tooltip';
 import EditableSelect from '../EditableSelect';
-
-type SortField = 'case' | 'type' | 'time' | 'duration';
-type SortOrder = 'asc' | 'desc';
 
 interface RecordManagementProps {
   cases: Case[];

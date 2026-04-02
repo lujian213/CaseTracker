@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Chart, ArcElement, PieController, Tooltip as ChartTooltip } from 'chart.js';
-import { Case, TimeEntry, WorkType, AppData, BackupSettings, ExpenseEntry } from './types';
+import { Case, TimeEntry, WorkType, AppData, BackupSettings, ExpenseEntry, AdminTab, SortField, SortOrder } from './types';
 import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay, formatDateForExport, formatDateTimeForExport, minutesToRoundedHours, formatDateForBillExport, formatLiveDuration } from './utils';
 import { Icons } from './constants';
 import { CASE_COLORS, WORK_TYPE_COLORS, EXPENSE_TYPE_COLORS, getCaseColor } from './constants/colors';
@@ -19,16 +19,10 @@ import ReportGeneration from './components/admin/ReportGeneration';
 import SystemManagement from './components/admin/SystemManagement';
 import AdminOverlay from './components/admin/AdminOverlay';
 
-// 注册 Chart.js 组件
 Chart.register(ArcElement, PieController, ChartTooltip);
 
 const LOCAL_STORAGE_KEY = 'chronos_case_tracker_data';
 const DEFAULT_WORK_TYPES = Object.values(WorkType);
-
-type AdminTab = 'cases' | 'worktypes' | 'records' | 'expenses' | 'reports' | 'system';
-
-type SortField = 'case' | 'type' | 'time' | 'duration';
-type SortOrder = 'asc' | 'desc';
 
 const DEFAULT_EXPENSE_TYPES = ['交通费', '餐饮费', '住宿费', '通讯费', '办公费', '其他'];
 

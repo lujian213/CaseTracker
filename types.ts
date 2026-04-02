@@ -48,3 +48,8 @@ export interface AppData {
   expenseTypes: string[];
   backupSettings?: BackupSettings;
 }
+
+export type SortField = 'case' | 'type' | 'time' | 'duration';
+export type SortOrder = 'asc' | 'desc';
+
+export type AdminTab = 'cases' | 'worktypes' | 'records' | 'expenses' | 'reports' | 'system';

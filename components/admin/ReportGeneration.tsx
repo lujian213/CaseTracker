@@ -1,29 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { Case, TimeEntry, ExpenseEntry } from '../../types';
 import { Icons } from '../../constants';
+import { CASE_COLORS, WORK_TYPE_COLORS, EXPENSE_TYPE_COLORS, getCaseColor } from '../../constants/colors';
 import { formatDate, formatDateForExport, formatDateForBillExport, formatDateTimeForExport, formatDateTime, formatDurationDisplay, formatFullTimestamp, minutesToRoundedHours, downloadCsv, downloadXlsx, formatLiveDuration, generateId } from '../../utils';
 import Tooltip from '../Tooltip';
 import PieChart from '../PieChart';
-
-const CASE_COLORS = [
-  '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e',
-  '#14b8a6', '#0ea5e9', '#3b82f6', '#64748b', '#a855f7',
-  '#06b6d4', '#84cc16', '#ef4444', '#10b981', '#f59e0b'
-];
-
-const WORK_TYPE_COLORS = [
-  '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444',
-  '#ec4899', '#14b8a6', '#84cc16', '#f97316', '#06b6d4',
-  '#6366f1', '#f43f5e', '#22c55e', '#0ea5e9', '#d946ef',
-  '#eab308', '#64748b', '#f472b6', '#0d9488', '#dc2626'
-];
-
-const EXPENSE_TYPE_COLORS = WORK_TYPE_COLORS;
-
-const getCaseColor = (index: number): string => {
-  if (index < 0) return CASE_COLORS[0];
-  return CASE_COLORS[index % CASE_COLORS.length];
-};
 
 interface ReportGenerationProps {
   cases: Case[];

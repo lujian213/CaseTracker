@@ -1,13 +1,11 @@
 import React from 'react';
-import { Case, TimeEntry, ExpenseEntry, BackupSettings } from '../../types';
+import { Case, TimeEntry, ExpenseEntry, BackupSettings, AdminTab } from '../../types';
 import CaseManagement from './CaseManagement';
 import WorkTypeManagement from './WorkTypeManagement';
 import RecordManagement from './RecordManagement';
 import ExpenseManagement from './ExpenseManagement';
 import ReportGeneration from './ReportGeneration';
 import SystemManagement from './SystemManagement';
-
-type AdminTab = 'cases' | 'worktypes' | 'records' | 'expenses' | 'reports' | 'system';
 
 interface AdminOverlayProps {
   tab: AdminTab;
@@ -67,4 +65,3 @@ const AdminOverlay: React.FC<AdminOverlayProps> = ({ tab, setTab, onClose, cases
 );
 
 export default AdminOverlay;
-export type { AdminTab };
