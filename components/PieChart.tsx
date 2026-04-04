@@ -16,6 +16,7 @@ export interface PieChartProps {
 const PieChart: React.FC<PieChartProps> = ({ data, title, formatter = (v) => v.toString() }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<Chart | null>(null);
+  const formatterRef = useRef(formatter);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -32,6 +33,9 @@ const PieChart: React.FC<PieChartProps> = ({ data, title, formatter = (v) => v.t
 
     // 截断图例文字（最多18字符）
     const truncateLabel = (name: string) => name.length > 18 ? name.substring(0, 16) + '...' : name;
+
+    // 保存 formatter 到 ref，供 tooltip 使用
+    formatterRef.current = formatter;
 
     chartRef.current = new Chart(ctx, {
       type: 'pie',
@@ -64,7 +68,7 @@ const PieChart: React.FC<PieChartProps> = ({ data, title, formatter = (v) => v.t
                 const total = filteredData.reduce((sum, d) => sum + d.value, 0);
                 const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0';
                 const name = item.name.length > 20 ? item.name.substring(0, 18) + '...' : item.name;
-                return `${name}: ${formatter(item.value)} (${percentage}%)`;
+                return `${name}: ${formatterRef.current(item.value)} (${percentage}%)`;
               }
             }
           }
@@ -77,7 +81,7 @@ const PieChart: React.FC<PieChartProps> = ({ data, title, formatter = (v) => v.t
         chartRef.current.destroy();
       }
     };
-  }, [data, formatter]);
+  }, [data]); // formatter 只影响 tooltip 显示，不加入依赖
 
   if (data.length === 0 || data.every(d => d.value === 0)) {
     return (
