@@ -239,6 +239,11 @@ const ReportGeneration: React.FC<ReportGenerationProps> = ({ cases, entries, exp
     await downloadXlsx([], allData, `Chronos_费用报表_${formatFullTimestamp(Date.now())}.xlsx`, { bottomAlignColumns: [3] });
   };
 
+  const pieData = useMemo(() => stats.map((s, i) => ({ name: s.name, value: s.total, color: s.color || getCaseColor(i) })), [stats]);
+  const workTypePieData = useMemo(() => workTypeStats.map(s => ({ name: s.name, value: s.total, color: s.color })), [workTypeStats]);
+  const expensePieData = useMemo(() => expenseStats.map((s, i) => ({ name: s.name, value: s.total, color: s.color || getCaseColor(i) })), [expenseStats]);
+  const expenseTypePieData = useMemo(() => expenseTypeStats.map(s => ({ name: s.name, value: s.total, color: s.color })), [expenseTypeStats]);
+
   return (
     <div className="space-y-2 flex flex-col h-full overflow-hidden">
       <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 flex flex-col gap-3 shrink-0 shadow-sm">
@@ -279,13 +284,13 @@ const ReportGeneration: React.FC<ReportGenerationProps> = ({ cases, entries, exp
       <div className="grid grid-cols-2 gap-1 shrink-0">
         {activeTab === 'time' ? (
           <>
-            <div className="bg-white rounded-xl shadow-sm"><PieChart data={stats.map((s, i) => ({ name: s.name, value: s.total, color: s.color || getCaseColor(i) }))} title="案件时间分布" formatter={(v) => formatDurationDisplay(v)} /></div>
-            <div className="bg-white rounded-xl shadow-sm"><PieChart data={workTypeStats.map(s => ({ name: s.name, value: s.total, color: s.color }))} title="工作类型分布" formatter={(v) => formatDurationDisplay(v)} /></div>
+            <div className="bg-white rounded-xl shadow-sm"><PieChart data={pieData} title="案件时间分布" formatter={(v) => formatDurationDisplay(v)} /></div>
+            <div className="bg-white rounded-xl shadow-sm"><PieChart data={workTypePieData} title="工作类型分布" formatter={(v) => formatDurationDisplay(v)} /></div>
           </>
         ) : (
           <>
-            <div className="bg-white rounded-xl shadow-sm"><PieChart data={expenseStats.map((s, i) => ({ name: s.name, value: s.total, color: s.color || getCaseColor(i) }))} title="案件费用分布" formatter={(v) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
-            <div className="bg-white rounded-xl shadow-sm"><PieChart data={expenseTypeStats.map(s => ({ name: s.name, value: s.total, color: s.color }))} title="费用类型分布" formatter={(v) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
+            <div className="bg-white rounded-xl shadow-sm"><PieChart data={expensePieData} title="案件费用分布" formatter={(v) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
+            <div className="bg-white rounded-xl shadow-sm"><PieChart data={expenseTypePieData} title="费用类型分布" formatter={(v) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
           </>
         )}
       </div>
