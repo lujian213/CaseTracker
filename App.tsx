@@ -191,15 +191,12 @@ const App: React.FC = () => {
 
               <div>
                 <label className="text-sm font-bold text-gray-400 mb-1 block">费用类型</label>
-                <select
+                <EditableSelect
                   value={newExpense.type}
-                  onChange={(e) => setNewExpense(prev => ({ ...prev, type: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-100"
-                >
-                  {expenseTypes.map(type => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setNewExpense(prev => ({ ...prev, type: v }))}
+                  options={expenseTypes}
+                  className="w-full"
+                />
               </div>
 
               <div>
