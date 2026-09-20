@@ -1,22 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Chart, ArcElement, PieController, Tooltip as ChartTooltip } from 'chart.js';
-import { Case, TimeEntry, WorkType, AppData, BackupSettings, ExpenseEntry, AdminTab, SortField, SortOrder } from './types';
-import { generateId, calculateDuration, downloadJson, formatDateTime, formatDate, formatFullTimestamp, downloadCsv, downloadXlsx, formatDurationDisplay, formatDateForExport, formatDateTimeForExport, minutesToRoundedHours, formatDateForBillExport, formatLiveDuration } from './utils';
+import { Case, TimeEntry, WorkType, AppData, BackupSettings, ExpenseEntry, AdminTab } from './types';
+import { generateId, calculateDuration, downloadJson, formatFullTimestamp } from './utils';
 import { Icons } from './constants';
-import { CASE_COLORS, WORK_TYPE_COLORS, EXPENSE_TYPE_COLORS, getCaseColor } from './constants/colors';
 
 // 导入组件
-import PieChart from './components/PieChart';
-import Tooltip from './components/Tooltip';
 import EditableSelect from './components/EditableSelect';
 import ConfirmDialog from './components/ConfirmDialog';
 import Dashboard from './components/Dashboard';
-import CaseManagement from './components/admin/CaseManagement';
-import WorkTypeManagement from './components/admin/WorkTypeManagement';
-import ExpenseManagement from './components/admin/ExpenseManagement';
-import RecordManagement from './components/admin/RecordManagement';
-import ReportGeneration from './components/admin/ReportGeneration';
-import SystemManagement from './components/admin/SystemManagement';
 import AdminOverlay from './components/admin/AdminOverlay';
 
 Chart.register(ArcElement, PieController, ChartTooltip);
@@ -168,7 +159,7 @@ const App: React.FC = () => {
         </button>
       </header>
       <main className="max-w-4xl mx-auto">
-        <Dashboard cases={cases.filter(c => c.isOpen)} entries={entries} workTypes={workTypes} expenseTypes={expenseTypes} onStart={startTimer} onAddExpense={addExpense} onStop={() => stopAllTimers()} />
+        <Dashboard cases={cases.filter(c => c.isOpen)} entries={entries} workTypes={workTypes} onStart={startTimer} onAddExpense={addExpense} onStop={() => stopAllTimers()} />
       </main>
       {isAdminOpen && <AdminOverlay tab={adminTab} setTab={setAdminTab} onClose={() => setIsAdminOpen(false)} cases={cases} setCases={setCases} entries={entries} setEntries={setEntries} expenses={expenses} setExpenses={setExpenses} workTypes={workTypes} setWorkTypes={setWorkTypes} expenseTypes={expenseTypes} setExpenseTypes={setExpenseTypes} backupSettings={backupSettings} setBackupSettings={setBackupSettings} showConfirm={(c:any) => setConfirmConfig({...c, isOpen:true})} />}
 

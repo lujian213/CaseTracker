@@ -9,20 +9,21 @@ interface DashboardProps {
   cases: Case[];
   entries: TimeEntry[];
   workTypes: string[];
-  expenseTypes: string[];
   onStart: (id: string, type: string, content: string, notes: string) => void;
   onAddExpense: (caseId: string) => void;
   onStop: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ cases, entries, workTypes, expenseTypes, onStart, onAddExpense, onStop }) => {
+const Dashboard: React.FC<DashboardProps> = ({ cases, entries, workTypes, onStart, onAddExpense, onStop }) => {
   const activeEntry = entries.find(e => e.endTime === null);
+  // 按案件名称字母序排序
+  const sortedCases = [...cases].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow-md border border-gray-100 min-h-[320px]">
         <div className="p-1">
-          {cases.length === 0 ? <div className="py-20 text-center text-gray-400"><p>目前没有打开的案件</p><p className="text-sm">点击右上角"管理"按钮创建新案件</p></div> :
-            <div className="divide-y divide-gray-100">{cases.map(c => <CaseRow key={c.id} caseItem={c} workTypes={workTypes} expenseTypes={expenseTypes} onStart={onStart} onAddExpense={onAddExpense} activeEntry={activeEntry?.caseId === c.id ? activeEntry : null} />)}</div>}
+          {sortedCases.length === 0 ? <div className="py-20 text-center text-gray-400"><p>目前没有打开的案件</p><p className="text-sm">点击右上角"管理"按钮创建新案件</p></div> :
+            <div className="divide-y divide-gray-100">{sortedCases.map(c => <CaseRow key={c.id} caseItem={c} workTypes={workTypes} onStart={onStart} onAddExpense={onAddExpense} activeEntry={activeEntry?.caseId === c.id ? activeEntry : null} />)}</div>}
         </div>
       </div>
       <div className="flex justify-center mt-8">
@@ -37,13 +38,12 @@ const Dashboard: React.FC<DashboardProps> = ({ cases, entries, workTypes, expens
 interface CaseRowProps {
   caseItem: Case;
   workTypes: string[];
-  expenseTypes: string[];
   onStart: (id: string, type: string, content: string, notes: string) => void;
   onAddExpense: (caseId: string) => void;
   activeEntry: TimeEntry | null;
 }
 
-const CaseRow: React.FC<CaseRowProps> = ({ caseItem, workTypes, expenseTypes, onStart, onAddExpense, activeEntry }) => {
+const CaseRow: React.FC<CaseRowProps> = ({ caseItem, workTypes, onStart, onAddExpense, activeEntry }) => {
   const [workType, setWorkType] = useState<string>(workTypes[0] || '');
   const [workContent, setWorkContent] = useState('');
   const [notes, setNotes] = useState('');
